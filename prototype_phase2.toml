@@ -1,0 +1,46 @@
+# PrototypeRecomp Phase 2A — instruction coverage config
+# Derived from the Phase 1 baseline config (same restore/save addresses, all
+# optimizations still OFF so results remain comparable against Phase 1).
+#
+# invalid_instructions: the .text tail 0x82BA86C8-0x82BA880C is an MSVC linker
+# data table ("\0HVE" marker + header + 71 function RVAs), not code. The marker
+# word 0x00485645 occurs exactly once in the whole image (verified by census:
+# analysis/logs/phase2/06_invalid_words_census.txt), so this single entry skips
+# exactly the table (0x82BA86C8 + 324 = 0x82BA880C = .text end) and cannot hide
+# any real instruction elsewhere. Same convention as hedge-dev's own Sonic
+# Unleashed config ("End of .text" entry for the same marker word).
+#
+# longjmp/setjmp: NONE. The two RtlUnwind call sites (0x82A3E990 in
+# sub_82A3E690, 0x82A48504 in sub_82A484F0) are MSVC C++ exception unwinding
+# machinery, not setjmp/longjmp; no bulk-register-save setjmp-style function
+# exists in the image. No redirects.
+
+[main]
+file_path = "default.xex"
+out_directory_path = "../../analysis/out/phase2"
+switch_table_file_path = "switch_tables_phase2.toml"
+
+# ---- optimizations: baseline (all disabled) ----
+skip_lr = false
+skip_msr = false
+ctr_as_local = false
+xer_as_local = false
+reserved_as_local = false
+cr_as_local = false
+non_argument_as_local = false
+non_volatile_as_local = false
+
+# ---- register restore & save functions (Phase 1 pattern-discovered) ----
+restgprlr_14_address = 0x82A37940
+savegprlr_14_address = 0x82A378F0
+restfpr_14_address = 0x82A3954C
+savefpr_14_address = 0x82A39500
+restvmx_14_address = 0x82A39F58
+savevmx_14_address = 0x82A39CC0
+restvmx_64_address = 0x82A39FEC
+savevmx_64_address = 0x82A39D54
+
+# ---- invalid instruction skips ----
+invalid_instructions = [
+    { data = 0x00485645, size = 324 }, # End of .text data table (HVE marker)
+]
