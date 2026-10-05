@@ -114,6 +114,7 @@ struct XenosGpu {
     std::atomic<uint64_t> frame_counter{0};       // Xenia counter_ (vblank)
     std::atomic<uint64_t> packets_parsed{0};
     std::atomic<uint64_t> interrupts_fired{0};
+    std::atomic<uint64_t> interrupts_dropped{0};   // pre-ISR-registration
     std::atomic<uint64_t> ibs_executed{0};
     std::atomic<uint64_t> waits_blocked{0};
 
@@ -816,14 +817,36 @@ void XenosCPMain(GuestThread* t) {
             }
         }
 
-        // Ring-advance interrupt (source=1) — the authentic guest chain:
-        // 82A79A00(1, dev) -> [[dev+10900]+16] interrupt processor ->
-        // mirror update / event signalling. Rate-limited to avoid flooding
-        // the guest with redundant ISRs when we advance frequently.
+        // Ring-advance interrupt (source=1): the game's D3D ring-init
+        // handshake depends on this completion signal (observed: without
+        // it the main thread parks in its queue dispatch loop forever).
+        // Hardware semantics: an interrupt with no registered handler is a
+        // no-op — the game registers its ISR ([[dev+10900]+16]) via the
+        // SCRATCH_REG4 writeback only after this stage, so gate on the slot
+        // being a valid code pointer to avoid bctrl'ing into the heap
+        // poison (0BADF00D) the uninitialized slot contains.
         uint64_t now = g_gpu.packets_parsed.load();
         if (now != last_int_dispatch) {
             last_int_dispatch = now;
-            DispatchGraphicsInterrupt(1);
+            bool isr_valid = false;
+            uint32_t arg = K().vd_interrupt_callback_arg;
+            if (arg) {
+                uint32_t intobj = LoadU32(arg + 10900);
+                if (intobj >= 0x82000000 && intobj < 0xC0000000) {
+                    uint32_t isr = LoadU32(intobj + 16);
+                    isr_valid = isr >= 0x82230000 && isr < 0x82BA880C &&
+                                (isr & 3) == 0;
+                }
+            }
+            if (isr_valid || g_gpu.interrupts_fired == 0) {
+                // Fire the very first one unconditionally ONLY if the ISR
+                // slot is sane; otherwise the game has no handler yet.
+            }
+            if (isr_valid) {
+                DispatchGraphicsInterrupt(1);
+            } else {
+                g_gpu.interrupts_dropped++;
+            }
         }
     }
     PRLOG(Gpu, "Xenos command processor stopped (packets=%llu ibs=%llu "
