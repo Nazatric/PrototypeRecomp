@@ -17,6 +17,7 @@
 static char g_altstack[64 * 1024];
 
 extern "C" void* pr_guest_base_for_crash_c();
+extern "C" int pr_crash_dump_guest(const char* tag);
 
 static void CrashHandler(int sig, siginfo_t* info, void* ctx_) {
     ucontext_t* uc = (ucontext_t*)ctx_;
@@ -74,6 +75,12 @@ static void CrashHandler(int sig, siginfo_t* info, void* ctx_) {
                     (uint32_t)((uintptr_t)info->si_addr - gbase));
             fflush(stdout);
         }
+    }
+    // Guest context + frame-chain dump (the PPC frame walker mirrors the
+    // watchdog: r1 -> [r1]=caller r1, [r1+8]=saved LR).
+    {
+        pr_crash_dump_guest("CRASH");
+        fflush(stdout);
     }
     fflush(stdout);
     backtrace_symbols_fd(bt, n, STDOUT_FILENO);

@@ -27,6 +27,7 @@ void LogLineOnce(LogCategory cat, const char* fmt, ...);
 #define PRLOGI(...) ::pr::LogLine(::pr::LogCategory::kImport, __VA_ARGS__)
 #define PRLOGE(...) ::pr::LogLine(::pr::LogCategory::kError, __VA_ARGS__)
 #define PRLOGW(...) ::pr::LogLine(::pr::LogCategory::kWarn, __VA_ARGS__)
+#define PRLOGONCE(cat, ...) ::pr::LogLineOnce(::pr::LogCategory::k##cat, __VA_ARGS__)
 
 // Fatal: log then abort (used for KeBugCheck etc).
 [[noreturn]] void LogFatal(const char* fmt, ...);

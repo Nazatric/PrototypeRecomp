@@ -5,7 +5,7 @@ source /home/z/my-project/scripts/env.sh
 set -e
 RT=/home/z/my-project/scripts/PrototypeRecomp/runtime
 PPC=/home/z/my-project/analysis/out/phase2
-PPC_BUILD=/home/z/my-project/analysis/out/phase2_build
+PPC_BUILD=${PR_GUEST_BUILD:-/home/z/my-project/analysis/out/phase2_build}
 XR=/home/z/my-project/scripts/research/xenonrecomp
 OUT=/home/z/my-project/scripts/PrototypeRecomp/runtime_build
 LOG=/home/z/my-project/scripts/PrototypeRecomp/analysis/logs/phase2b
@@ -14,7 +14,7 @@ mkdir -p "$OUT" "$LOG"
 CXXFLAGS="-std=c++17 -O1 -w -I$RT -I$PPC -I$XR/thirdparty/simde -I$XR/XenonUtils -I$XR/thirdparty/fmt/include -I$XR/thirdparty/tiny-AES-c -pthread"
 
 cd "$RT"
-for f in logging state imports_core imports_fs imports_vd imports_xam trace_hooks main; do
+for f in logging state imports_core imports_fs imports_vd imports_xam trace_hooks gpu_command_processor main; do
     if [ ! -f "$OUT/$f.o" ] || [ "$f.cpp" -nt "$OUT/$f.o" ] || [ "$RT/state.h" -nt "$OUT/$f.o" ] || [ "$RT/guest.h" -nt "$OUT/$f.o" ]; then
         echo "CXX $f.cpp"
         clang++ $CXXFLAGS -c "$f.cpp" -o "$OUT/$f.o" 2> "$LOG/compile_$f.err"
@@ -30,7 +30,7 @@ done
 echo "LINK"
 clang++ -std=c++17 -O1 -rdynamic -pthread \
     "$OUT"/logging.o "$OUT"/state.o "$OUT"/imports_core.o "$OUT"/imports_fs.o \
-    "$OUT"/imports_vd.o "$OUT"/imports_xam.o "$OUT"/trace_hooks.o "$OUT"/main.o \
+    "$OUT"/imports_vd.o "$OUT"/imports_xam.o "$OUT"/trace_hooks.o "$OUT"/gpu_command_processor.o "$OUT"/main.o \
     "$PPC_BUILD"/*.o \
     "$XR/build/XenonUtils/libXenonUtils.a" \
     "$XR/build/thirdparty/fmt/libfmt.a" \

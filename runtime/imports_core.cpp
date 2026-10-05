@@ -219,6 +219,16 @@ static void SpawnGuestThread(PPCContext& ctx, uint32_t handle_ptr,
                              uint32_t stack_size, uint32_t thread_id_ptr,
                              uint32_t xapi_startup, uint32_t start_address,
                              uint32_t start_context, uint32_t creation_flags) {
+    // The game routes most threads through the ATG trampoline at 0x82236A90,
+    // which reads the real entry from [start_context+8]. Log both so each
+    // worker can be identified by its actual procedure.
+    if (start_address == 0x82236A90 && start_context >= 0x82000000 &&
+        start_context < 0xC0000000) {
+        uint32_t real_entry = LoadU32(start_context + 8);
+        uint32_t real_arg = LoadU32(start_context + 12);
+        PRLOG(Thread, "ATG thread: obj=%08X real_entry=%08X (%s) arg=%08X",
+              start_context, real_entry, GuestFuncName(real_entry), real_arg);
+    }
     auto* t = new GuestThread();
     t->launch.entry = start_address;
     t->launch.arg = start_context;
@@ -545,8 +555,12 @@ IMPORT(NtReleaseSemaphore) {
         StoreU8(sem->guest_addr + 0x01, sem->count > 0 ? 1 : 0);
         if (prev_ptr) StoreU32(prev_ptr, (uint32_t)prev);
         sem->cv.notify_all();
+        PRLOG(Sync, "NtReleaseSemaphore(%08X, %u) obj=%08X count %d->%d tid=%u",
+              handle, count, sem->guest_addr, prev, sem->count,
+              GuestThread::GetCurrent() ? GuestThread::GetCurrent()->thread_id : 0);
         RET(X_STATUS_SUCCESS);
     }
+    PRLOGW("NtReleaseSemaphore: bad handle %08X", handle);
     RET(X_STATUS_INVALID_HANDLE);
 }
 
@@ -744,7 +758,19 @@ IMPORT(NtWaitForSingleObjectEx) {
         PRLOGW("NtWaitForSingleObjectEx: bad handle %08X", handle);
         RET(X_STATUS_INVALID_HANDLE);
     }
-    RET((uint32_t)WaitSingleObjectKernel(obj, timeout, have_timeout));
+    uint32_t status = (uint32_t)WaitSingleObjectKernel(obj, timeout, have_timeout);
+    // Log each unique (handle, tid) wait once — reveals who blocks on what.
+    // Also log wake-ups for semaphore objects (deadlock diagnosis).
+    if (dynamic_cast<GuestSemaphore*>(obj)) {
+        PRLOGONCE(Sync, "sem-wait DONE(%08X) obj=%08X -> %08X tid=%u",
+                  handle, obj->guest_addr, status,
+                  GuestThread::GetCurrent() ? GuestThread::GetCurrent()->thread_id : 0);
+    }
+    PRLOGONCE(Sync, "NtWaitForSingleObjectEx(%08X) obj=%08X infinite=%d tid=%u",
+              handle, obj->guest_addr,
+              (int)(!have_timeout || timeout == 0xFFFFFFFFFFFFFFFFull),
+              GuestThread::GetCurrent() ? GuestThread::GetCurrent()->thread_id : 0);
+    RET(status);
 }
 
 IMPORT(NtWaitForMultipleObjectsEx) {
@@ -1292,10 +1318,52 @@ IMPORT(KeQuerySystemTime) {
               116444736000000000ull);
 }
 
+// Host TSC frequency (calibrated at boot) — the generated code implements
+// mftb with __rdtsc, so the guest-visible performance frequency MUST be in
+// the same units or game timing math (e.g. the D3D ISR frame accounting in
+// sub_82A697F0) divides by zero / misbehaves.
+static uint64_t g_host_tsc_hz = 0;
+
+uint64_t GetHostTscHz();
+
+static uint64_t CalibrateTscHz() {
+    // Prefer the kernel-reported value.
+    FILE* f = fopen("/sys/devices/system/cpu/cpu0/tsc_freq_khz", "r");
+    if (f) {
+        uint64_t khz = 0;
+        if (fscanf(f, "%llu", (unsigned long long*)&khz) == 1 && khz > 1000) {
+            fclose(f);
+            return khz * 1000ull;
+        }
+        fclose(f);
+    }
+    // Measure over 100 ms.
+    uint64_t t0 = __rdtsc();
+    auto s0 = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    uint64_t t1 = __rdtsc();
+    auto s1 = std::chrono::steady_clock::now();
+    double sec = std::chrono::duration<double>(s1 - s0).count();
+    return sec > 0 ? (uint64_t)((double)(t1 - t0) / sec) : 1000000000ull;
+}
+
+uint64_t GetHostTscHz() {
+    if (!g_host_tsc_hz) g_host_tsc_hz = CalibrateTscHz();
+    return g_host_tsc_hz;
+}
+
+namespace pr {
+uint64_t GetHostTscHzWrap() { return GetHostTscHz(); }
+}  // namespace pr
+
 IMPORT(KeQueryPerformanceFrequency) {
-    uint32_t freq_ptr = ARG(0);
-    if (freq_ptr) StoreU64(freq_ptr, 1000000000ull / 1000ull);  // 1MHz QPC on Xbox
-    RET(0);  // counter value 0
+    // No arguments: the frequency comes back in r3 (Xenia returns
+    // guest_tick_frequency as a dword_result_t; the game's ISR divides by
+    // it directly). Calibrated at boot (see WarmUpTscFrequency) so the
+    // first guest call never stalls the calling thread.
+    PRLOGONCE(Thread, "KeQueryPerformanceFrequency -> %llu Hz (host TSC)",
+              (unsigned long long)GetHostTscHz());
+    RET((uint32_t)GetHostTscHz());
 }
 
 IMPORT(KeBugCheck) {

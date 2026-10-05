@@ -40,6 +40,30 @@ savevmx_14_address = 0x82A39CC0
 restvmx_64_address = 0x82A39FEC
 savevmx_64_address = 0x82A39D54
 
+# ---- forced functions: MSVC EH interpreter dispatch targets ----
+# The __CxxFrameHandler3 state machine (sub_82A3F018 and friends) dispatches
+# through a u16 offset table at 0x820E8E98 with handler base 0x82A3F460.
+# Those mid-function entries must exist as real functions or the indirect
+# call resolves to NULL (Phase 2C: observed crash at 0x82A3F648).
+functions = [
+    { address = 0x82A3F460, size = 0x6FC },
+    { address = 0x82A3F468, size = 0x6F4 },
+    { address = 0x82A3F470, size = 0x6EC },
+    { address = 0x82A3F4CC, size = 0x690 },
+    { address = 0x82A3F4D8, size = 0x684 },
+    { address = 0x82A3F548, size = 0x614 },
+    { address = 0x82A3F63C, size = 0x520 },
+    { address = 0x82A3F648, size = 0x514 },
+    { address = 0x82A3F76C, size = 0x3F0 },
+    { address = 0x82A3F77C, size = 0x3E0 },
+    { address = 0x82A3F92C, size = 0x230 },
+    { address = 0x82A3FC60, size = 0x78 },
+    { address = 0x82A3FC68, size = 0x70 },
+    { address = 0x82A464D8, size = 0x314 },
+    { address = 0x82A46C68, size = 0x1D0 },
+    { address = 0x82A46CD8, size = 0x160 },
+]
+
 # ---- invalid instruction skips ----
 invalid_instructions = [
     { data = 0x00485645, size = 324 }, # End of .text data table (HVE marker)

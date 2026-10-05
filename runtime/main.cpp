@@ -227,9 +227,18 @@ static void WriteVariableSlot(const RawXex& xex, uint32_t thunk_va,
 }
 
 // ------------------------------------------------------------ boot
+
+
+uint64_t GetHostTscHzWrap();
+
 int BootTitle(const char* xex_path, int argc, char** argv) {
     LogInit();
     TraceHooksInit();
+    // Calibrate the host TSC frequency NOW (before any guest thread runs)
+    // so the first KeQueryPerformanceFrequency call cannot stall the game's
+    // init sequencing (observed: a 100ms first-call sleep re-raced the
+    // DriveThread handshake).
+    (void)GetHostTscHzWrap();
 
     // 0. Guest memory.
     if (!GuestMemory::Init()) {
@@ -434,11 +443,17 @@ int BootTitle(const char* xex_path, int argc, char** argv) {
 
     // 10. Execute (main thread runs on the host main thread).
     StartThreadWatchdog();
+    StartXenosCommandProcessor();
     PRLOG(Loader, "=== launching title ===");
     int64_t boot_r3 = 1;  // main thread entry arg: r3=1 observed on real HW
     main->launch.arg = 1;
     int exit_code = 0;
     try {
+        // Bind this host thread to the main GuestThread (imports, interrupt
+        // dispatch and crash diagnostics all resolve the current guest
+        // thread through the host-TLS pointer; spawned threads set it in
+        // GuestThread::Run(), the main thread runs inline).
+        GuestThread::SetCurrentForHostThread(main);
         uint64_t args[1] = {1};
         exit_code = RunGuestFunction(main, k.entry_point, args, 1);
         PRLOG(Loader, "=== title returned: %d (r3=%08X) ===", exit_code,

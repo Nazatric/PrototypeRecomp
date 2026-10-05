@@ -403,6 +403,27 @@ IMPORT(NtQueryInformationFile) {
         CompleteIO(io_status, X_STATUS_SUCCESS, length);
         break;
     }
+    case 34: {  // FileNetworkOpenInformation (0x34 bytes):
+        // {creation,access,write,change (FILETIME u64), allocation u64,
+        //  end_of_file u64 (SIZE), attributes u32}
+        uint64_t ctime = 0;
+        if (!f->is_device && !f->is_directory && f->fs_path.size() &&
+            stat(f->fs_path.c_str(), &st) == 0) {
+            // 100ns since 1601 (FILETIME).
+            ctime = (uint64_t)st.st_mtime * 10000000ull + 116444736000000000ull;
+        }
+        if (length >= 0x34) {
+            StoreU64(info + 0x00, ctime);
+            StoreU64(info + 0x08, ctime);
+            StoreU64(info + 0x10, ctime);
+            StoreU64(info + 0x18, ctime);
+            StoreU64(info + 0x20, (size + 0xFFF) & ~0xFFFull);
+            StoreU64(info + 0x28, size);          // EndOfFile = file size
+            StoreU32(info + 0x30, f->is_directory ? 0x10 : 0x80);
+        }
+        CompleteIO(io_status, X_STATUS_SUCCESS, 0x34);
+        break;
+    }
     default:
         PRLOGW("NtQueryInformationFile: class %u unsupported", info_class);
         CompleteIO(io_status, X_STATUS_SUCCESS, length);

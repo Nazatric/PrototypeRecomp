@@ -226,6 +226,7 @@ public:
     uint32_t GetLastError() { return LoadU32(kthread + 0x160); }
 
     static GuestThread* GetCurrent();     // host-TLS lookup
+    static void SetCurrentForHostThread(GuestThread* t);  // bind CP/DPC host threads
 };
 
 // ---------------------------------------------------------------- loader
@@ -355,5 +356,18 @@ struct GuestUnwind {
 
 // Boot: load XEX, set up everything, run main thread. Returns exit code.
 int BootTitle(const char* xex_path, int argc, char** argv);
+
+// Minimal Xenos command-processor front-end (gpu_command_processor.cpp):
+// consumes real PM4 packets from the game's ring, advances the read-pointer
+// writeback, and wakes the game's DPC interrupt threads.
+void StartXenosCommandProcessor();
+void StopXenosCommandProcessor();
+
+// Reflect kernel ring setup into the Xenos register file (Vd imports).
+void XenosSetRingRegs(uint32_t rb_base_pa, uint32_t rptr_wb_pa);
+
+// GPU statistics for the watchdog.
+uint64_t XenosGpuStats(uint32_t* packets, uint32_t* ibs, uint32_t* waits,
+                       uint32_t* ints);
 
 }  // namespace pr

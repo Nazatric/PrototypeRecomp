@@ -24,6 +24,25 @@
 #define PPC_JOIN(x, y) x##y
 #define PPC_XSTRINGIFY(x) #x
 #define PPC_STRINGIFY(x) PPC_XSTRINGIFY(x)
+
+// ---------------------------------------------------------------------------
+// Xenos MMIO hooks (PrototypeRecomp runtime). The register pages at guest
+// 0x7FC80000 (Xenos CP/graphics registers) and 0x7FEA0000 are intercepted
+// here; every other address falls through to plain guest memory semantics.
+// Implemented in gpu_command_processor.cpp (extern "C" linkage so the
+// generated TUs can call them without namespace qualification).
+// ---------------------------------------------------------------------------
+extern "C" {
+uint8_t  PR_MmioReadU8 (uint32_t addr);
+uint16_t PR_MmioReadU16(uint32_t addr);
+uint32_t PR_MmioReadU32(uint32_t addr);
+uint64_t PR_MmioReadU64(uint32_t addr);
+void     PR_MmioWriteU8 (uint32_t addr, uint8_t  value);
+void     PR_MmioWriteU16(uint32_t addr, uint16_t value);
+void     PR_MmioWriteU32(uint32_t addr, uint32_t value);
+void     PR_MmioWriteU64(uint32_t addr, uint64_t value);
+}
+
 #define PPC_FUNC(x) void x(PPCContext& __restrict ctx, uint8_t* base)
 #define PPC_FUNC_IMPL(x) extern "C" PPC_FUNC(x)
 #define PPC_EXTERN_FUNC(x) extern PPC_FUNC(x)
@@ -51,22 +70,6 @@
 // These are currently unused. However, MMIO loads could possibly be handled statically with some profiling and a fallback.
 // The fallback would be a runtime exception handler which will intercept reads from MMIO regions 
 // and log the PC for compiling to static code later.
-#ifndef PPC_MM_LOAD_U8
-#define PPC_MM_LOAD_U8(x)  PPC_LOAD_U8 (x)
-#endif
-
-#ifndef PPC_MM_LOAD_U16
-#define PPC_MM_LOAD_U16(x) PPC_LOAD_U16(x)
-#endif
-
-#ifndef PPC_MM_LOAD_U32
-#define PPC_MM_LOAD_U32(x) PPC_LOAD_U32(x)
-#endif
-
-#ifndef PPC_MM_LOAD_U64
-#define PPC_MM_LOAD_U64(x) PPC_LOAD_U64(x)
-#endif
-
 #ifndef PPC_STORE_U8
 #define PPC_STORE_U8(x, y) *(volatile uint8_t*)(base + (x)) = (y)
 #endif
@@ -83,24 +86,30 @@
 #define PPC_STORE_U64(x, y) *(volatile uint64_t*)(base + (x)) = __builtin_bswap64(y)
 #endif
 
-// MMIO Store handling is completely reliant on being preeceded by eieio.
-// TODO: Verify if that's always the case.
+#ifndef PPC_MM_LOAD_U8
+#define PPC_MM_LOAD_U8(x)  PR_MmioReadU8(x)
+#endif
+#ifndef PPC_MM_LOAD_U16
+#define PPC_MM_LOAD_U16(x) PR_MmioReadU16(x)
+#endif
+#ifndef PPC_MM_LOAD_U32
+#define PPC_MM_LOAD_U32(x) PR_MmioReadU32(x)
+#endif
+#ifndef PPC_MM_LOAD_U64
+#define PPC_MM_LOAD_U64(x) PR_MmioReadU64(x)
+#endif
 #ifndef PPC_MM_STORE_U8
-#define PPC_MM_STORE_U8(x, y)   PPC_STORE_U8 (x, y)
+#define PPC_MM_STORE_U8(x, y)  PR_MmioWriteU8((x), (y))
 #endif
-
 #ifndef PPC_MM_STORE_U16
-#define PPC_MM_STORE_U16(x, y)  PPC_STORE_U16(x, y)
+#define PPC_MM_STORE_U16(x, y) PR_MmioWriteU16((x), (y))
 #endif
-
 #ifndef PPC_MM_STORE_U32
-#define PPC_MM_STORE_U32(x, y)  PPC_STORE_U32(x, y)
+#define PPC_MM_STORE_U32(x, y) PR_MmioWriteU32((x), (y))
 #endif
-
 #ifndef PPC_MM_STORE_U64
-#define PPC_MM_STORE_U64(x, y)  PPC_STORE_U64(x, y)
+#define PPC_MM_STORE_U64(x, y) PR_MmioWriteU64((x), (y))
 #endif
-
 #ifndef PPC_CALL_FUNC
 #define PPC_CALL_FUNC(x) x(ctx, base)
 #endif
