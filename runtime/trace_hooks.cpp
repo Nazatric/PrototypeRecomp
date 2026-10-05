@@ -9,6 +9,8 @@
 #include <unistd.h>
 
 namespace pr {
+
+void EhTraceInit();  // eh_trace.cpp: allocator/intern-table diagnostics.
 extern bool g_trace_hooks;
 bool g_trace_hooks = false;
 }
@@ -141,5 +143,6 @@ namespace pr {
 void TraceHooksInit() {
     g_trace_hooks = getenv("PR_TRACE_HOOKS") != nullptr;
     if (g_trace_hooks) g_log_enabled[(size_t)LogCategory::kTrace] = true;
+    EhTraceInit();
 }
 }  // namespace pr

@@ -4421,3 +4421,254 @@ labels = [
     0x82B64D1C
 ]
 
+
+# ---- Phase 2C manual additions: CRT printf/scanf u16-offset dispatch ----
+# XenonAnalyse missed these six tables: an interleaved NOP (ori r0,r0,0)
+# between the handler-base addi and the add breaks its fixed patterns.
+# Recovered by scripts/decode_dispatch.py from the pristine image;
+# every label verified inside its .pdata function range.
+
+# printf _output format-specifier dispatch (A..x)
+[[switch]]
+base = 0x82A3F438
+r = 11
+# entries: 56
+labels = [
+    0x82A3F63C,
+    0x82A3F92C,
+    0x82A3F460,
+    0x82A3F92C,
+    0x82A3F63C,
+    0x82A3F92C,
+    0x82A3F63C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F548,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F77C,
+    0x82A3F92C,
+    0x82A3F4CC,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F648,
+    0x82A3F92C,
+    0x82A3F470,
+    0x82A3F76C,
+    0x82A3F648,
+    0x82A3F648,
+    0x82A3F648,
+    0x82A3F92C,
+    0x82A3F76C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F600,
+    0x82A3F7B4,
+    0x82A3F778,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F558,
+    0x82A3F92C,
+    0x82A3F770,
+    0x82A3F92C,
+    0x82A3F92C,
+    0x82A3F784,
+]
+
+# scanf-family dispatch (P..`? base 80)
+[[switch]]
+base = 0x82A44E2C
+r = 10
+# entries: 16
+labels = [
+    0x82A44E64,
+    0x82A44B74,
+    0x82A44ED4,
+    0x82A44E54,
+    0x82A44E54,
+    0x82A45098,
+    0x82A45098,
+    0x82A44DFC,
+    0x82A44E54,
+    0x82A44E54,
+    0x82A44DFC,
+    0x82A44DFC,
+    0x82A44DFC,
+    0x82A44DFC,
+    0x82A44DFC,
+    0x82A450A8,
+]
+
+# scanf _input dispatch (base 99)
+[[switch]]
+base = 0x82A497DC
+r = 11
+# entries: 25
+labels = [
+    0x82A49804,
+    0x82A49CA4,
+    0x82A49FE4,
+    0x82A49FE4,
+    0x82A49FE4,
+    0x82A4A3BC,
+    0x82A49B44,
+    0x82A4A3BC,
+    0x82A4A3BC,
+    0x82A4A3BC,
+    0x82A4A3BC,
+    0x82A49F94,
+    0x82A49CA4,
+    0x82A49CA0,
+    0x82A4A3BC,
+    0x82A4A3BC,
+    0x82A49814,
+    0x82A4A3BC,
+    0x82A49CA4,
+    0x82A4A3BC,
+    0x82A4A3BC,
+    0x82A49B48,
+    0x82A4A3BC,
+    0x82A4A3BC,
+    0x82A49824,
+]
+
+# scanf _input_l dispatch (base 99)
+[[switch]]
+base = 0x82A4AAB8
+r = 11
+# entries: 25
+labels = [
+    0x82A4AAE0,
+    0x82A4AFC4,
+    0x82A4B328,
+    0x82A4B328,
+    0x82A4B328,
+    0x82A4B720,
+    0x82A4AE4C,
+    0x82A4B720,
+    0x82A4B720,
+    0x82A4B720,
+    0x82A4B720,
+    0x82A4B2DC,
+    0x82A4AFC4,
+    0x82A4AFC0,
+    0x82A4B720,
+    0x82A4B720,
+    0x82A4AAF0,
+    0x82A4B720,
+    0x82A4AFC4,
+    0x82A4B720,
+    0x82A4B720,
+    0x82A4AE50,
+    0x82A4B720,
+    0x82A4B720,
+    0x82A4AB00,
+]
+
+# printf wide _output dispatch (base 65)
+[[switch]]
+base = 0x82A4C208
+r = 11
+# entries: 56
+labels = [
+    0x82A4C40C,
+    0x82A4C6FC,
+    0x82A4C230,
+    0x82A4C6FC,
+    0x82A4C40C,
+    0x82A4C6FC,
+    0x82A4C40C,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C318,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C54C,
+    0x82A4C6FC,
+    0x82A4C29C,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C418,
+    0x82A4C6FC,
+    0x82A4C240,
+    0x82A4C53C,
+    0x82A4C418,
+    0x82A4C418,
+    0x82A4C418,
+    0x82A4C6FC,
+    0x82A4C53C,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C3D0,
+    0x82A4C584,
+    0x82A4C548,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C328,
+    0x82A4C6FC,
+    0x82A4C540,
+    0x82A4C6FC,
+    0x82A4C6FC,
+    0x82A4C554,
+]
+
+# ctype/locale class dispatch
+[[switch]]
+base = 0x82A7C34C
+r = 4
+# entries: 19
+labels = [
+    0x82A7C374,
+    0x82A7C394,
+    0x82A7C3C0,
+    0x82A7C3D8,
+    0x82A7C43C,
+    0x82A7C46C,
+    0x82A7C4A8,
+    0x82A7C548,
+    0x82A7C5CC,
+    0x82A7C62C,
+    0x82A7C68C,
+    0x82A7C6C0,
+    0x82A7C704,
+    0x82A7C730,
+    0x82A7C758,
+    0x82A7C780,
+    0x82A7C7B4,
+    0x82A7C538,
+    0x82A7C548,
+]

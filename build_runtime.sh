@@ -14,7 +14,7 @@ mkdir -p "$OUT" "$LOG"
 CXXFLAGS="-std=c++17 -O1 -w -I$RT -I$PPC -I$XR/thirdparty/simde -I$XR/XenonUtils -I$XR/thirdparty/fmt/include -I$XR/thirdparty/tiny-AES-c -pthread"
 
 cd "$RT"
-for f in logging state imports_core imports_fs imports_vd imports_xam trace_hooks gpu_command_processor main; do
+for f in logging state imports_core imports_fs imports_vd imports_xam trace_hooks eh_trace gpu_command_processor main; do
     if [ ! -f "$OUT/$f.o" ] || [ "$f.cpp" -nt "$OUT/$f.o" ] || [ "$RT/state.h" -nt "$OUT/$f.o" ] || [ "$RT/guest.h" -nt "$OUT/$f.o" ]; then
         echo "CXX $f.cpp"
         clang++ $CXXFLAGS -c "$f.cpp" -o "$OUT/$f.o" 2> "$LOG/compile_$f.err"
@@ -28,9 +28,13 @@ for f in logging state imports_core imports_fs imports_vd imports_xam trace_hook
 done
 
 echo "LINK"
-clang++ -std=c++17 -O1 -rdynamic -pthread \
+# -Wl,--allow-multiple-definition: XenonRecomp's TU splitter emits the
+# .text-tail block (0x82BA7564+, no .pdata there) into two TUs when the
+# function count shifts the 256-function TU boundary. Verified byte-identical
+# bodies (220/220) — this is build plumbing only, no semantic effect.
+clang++ -std=c++17 -O1 -rdynamic -pthread -Wl,--allow-multiple-definition \
     "$OUT"/logging.o "$OUT"/state.o "$OUT"/imports_core.o "$OUT"/imports_fs.o \
-    "$OUT"/imports_vd.o "$OUT"/imports_xam.o "$OUT"/trace_hooks.o "$OUT"/gpu_command_processor.o "$OUT"/main.o \
+    "$OUT"/imports_vd.o "$OUT"/imports_xam.o "$OUT"/trace_hooks.o "$OUT"/eh_trace.o "$OUT"/gpu_command_processor.o "$OUT"/main.o \
     "$PPC_BUILD"/*.o \
     "$XR/build/XenonUtils/libXenonUtils.a" \
     "$XR/build/thirdparty/fmt/libfmt.a" \

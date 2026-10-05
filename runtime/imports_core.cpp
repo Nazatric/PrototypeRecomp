@@ -973,10 +973,29 @@ IMPORT(RtlEnterCriticalSection) {
             return;
         }
         cs->waiters.push_back(cur_kthread);
-        cs->cv.wait(lk, [&] {
-            return cs->owner == 0 &&
-                   (!cs->waiters.empty() && cs->waiters.front() == cur_kthread);
-        });
+        // Deadlock watchdog: if this wait exceeds 250 ms, report the CS
+        // state (owner + waiter queue) once per CS. Long waits are legal
+        // (idle queues), so also record the guest PC of the owner via the
+        // object table when identifiable.
+        bool reported = false;
+        if (!cs->cv.wait_for(lk, std::chrono::milliseconds(250), [&] {
+                return cs->owner == 0 &&
+                       (!cs->waiters.empty() &&
+                        cs->waiters.front() == cur_kthread);
+            })) {
+            PRLOG(Thread,
+                  "CS-WAIT >=250ms: cs=%08X owner_kthread=%08X owner_tid=? "
+                  "waiters=%zu me=%08X (tid=%u)",
+                  cs_ptr, cs->owner, cs->waiters.size(), cur_kthread,
+                  cur ? cur->thread_id : 0);
+            reported = true;
+            cs->cv.wait(lk, [&] {
+                return cs->owner == 0 &&
+                       (!cs->waiters.empty() &&
+                        cs->waiters.front() == cur_kthread);
+            });
+        }
+        (void)reported;
         cs->waiters.pop_front();
         cs->owner = cur_kthread;
         cs->recursion = 1;
