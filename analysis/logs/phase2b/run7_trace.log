@@ -1,0 +1,358 @@
+[    0.000|LOADER] guest memory base: 0x7fea93600000 (4 GiB)
+[    0.000|WARN  ] no filesystem root set (PR_FS_ROOT) — disc absent; D:\ opens will fail authentically
+[    0.234|LOADER] raw XEX ok: image 15073280 bytes, load 82000000
+[    0.459|LOADER] image loaded: base=82000000 size=15073280 entry=82A52C00
+[    0.462|LOADER] registering 84679 guest functions into lookup table at 82E60000
+[    0.464|LOADER] imports: 235 functions, 12 variables
+[    0.464|LOADER] variable import KeTimeStampBundle              slot 82000604 = 80013208
+[    0.464|LOADER] variable import XexExecutableModuleHandle      slot 8200061C = 80013100
+[    0.464|LOADER] variable import XboxHardwareInfo               slot 82000638 = 80013238
+[    0.464|LOADER] variable import KeDebugMonitorData             slot 82000660 = 80013398
+[    0.464|LOADER] variable import ExThreadObjectType             slot 82000668 = 80013248
+[    0.464|LOADER] variable import ExLoadedCommandLine            slot 820006BC = 80013268
+[    0.464|LOADER] variable import KeCertMonitorData              slot 820006F0 = 800133A0
+[    0.464|LOADER] variable import VdGlobalDevice                 slot 820006F4 = 80013388
+[    0.464|LOADER] variable import VdGlobalXamDevice              slot 820006F8 = 80013390
+[    0.464|LOADER] variable import XboxKrnlVersion                slot 82000734 = 80013370
+[    0.464|LOADER] variable import VdGpuClockInMHz                slot 8200075C = 80013378
+[    0.464|LOADER] variable import VdHSIOCalibrationLock          slot 8200076C = 80013380
+[    0.464|LOADER] entry=82A52C00 default_stack=262144 tls(slots=64 data=0 raw=0@00000000)
+[    0.464|THREAD] XThreadF8000008 (7) Stack: 70001000-70041000 pcr=800134E8 tls=800133A8 entry=82A52C00
+[    0.464|LOADER] main thread: handle=F8000008 id=7 stack=70001000-70041000 entry=82A52C00
+[    0.464|LOADER] === launching title ===
+[    0.464|TRACE ] >> sub_82A5E810
+[    0.464|IMPORT] RtlImageXexHeaderField(xexhdr=80010000 field=00020401) = 00000000
+[    0.464|MEMORY] NtAllocateVirtualMemory(base=00000000 size=1048576 type=60002000 prot=00000004) = 00000000 -> 00010000
+[    0.464|MEMORY] NtAllocateVirtualMemory(base=00010000 size=65536 type=60001000 prot=00000004) = 00000000 -> 00010000
+[    0.465|TRACE ] << sub_82A5E810 r3=00000001
+[    0.465|TRACE ] >> sub_82A5BA00
+[    0.465|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.465|TRACE ] >> sub_82A52A18
+[    0.465|TRACE ] << sub_82A52A18 r3=00000000
+[    0.465|TRACE ] >> sub_82A4BBD8
+[    0.465|TRACE ] << sub_82A4BBD8 r3=00000001
+[    0.465|TRACE ] >> sub_82A5E6C8
+[    0.465|TRACE ] << sub_82A5E6C8 r3=00000000
+[    0.465|TRACE ] >> sub_82A5E5E8
+[    0.465|TRACE ] << sub_82A5E5E8 r3=00000000
+[    0.465|TRACE ] >> sub_82230000
+[    0.465|TRACE ] >> sub_82A528D0
+[    0.465|TRACE ] << sub_82A528D0 r3=80013268
+[    0.465|MEMORY] MmQueryStatistics(len=104) -> 512MB physical
+[    0.465|MEMORY] MmAllocatePhysicalMemoryEx(flags=0 size=65536 prot=20000004 range=[00000000,FFFFFFFF] align=0) = A0000000
+[    0.465|MEMORY] MmAllocatePhysicalMemoryEx(flags=0 size=534183936 prot=20000004 range=[00000000,FFFFFFFF] align=0) = A0010000
+[    0.466|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F800000C obj 800142B0
+[    0.466|TRACE ] >> sub_82A5B9F0
+[    0.466|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.466|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000010 obj 800142C8
+[    0.466|TRACE ] >> sub_82A5B9F0
+[    0.466|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000014 obj 800142E0
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000018 obj 800142F8
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|THREAD] XThreadF800001C (8) Stack: 70045000-7004D000 pcr=80014450 tls=80014310 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F800001C type=80013248) = obj 80014768
+[    0.472|THREAD] KeSetBasePriorityThread(80014768, 2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F800001C type=80013248) = obj 80014768
+[    0.472|THREAD] NtResumeThread(F800001C) = 00000000 prev=0
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000020 obj 80015218
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000024 obj 80015230
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000028 obj 80015248
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|THREAD] XThreadF800002C (9) Stack: 70051000-70059000 pcr=800153A0 tls=80015260 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F800002C type=80013248) = obj 800156B8
+[    0.472|THREAD] KeSetBasePriorityThread(800156B8, 2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F800002C type=80013248) = obj 800156B8
+[    0.472|THREAD] NtResumeThread(F800002C) = 00000000 prev=0
+[    0.472|THREAD] XThreadF8000030 (10) Stack: 7005D000-70065000 pcr=800162A8 tls=80016168 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000030 type=80013248) = obj 800165C0
+[    0.472|THREAD] KeSetBasePriorityThread(800165C0, 2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000030 type=80013248) = obj 800165C0
+[    0.472|THREAD] NtResumeThread(F8000030) = 00000000 prev=0
+[    0.472|THREAD] XThreadF8000034 (11) Stack: 70069000-70071000 pcr=800171B0 tls=80017070 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000034 type=80013248) = obj 800174C8
+[    0.472|THREAD] KeSetBasePriorityThread(800174C8, 2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000034 type=80013248) = obj 800174C8
+[    0.472|THREAD] NtResumeThread(F8000034) = 00000000 prev=0
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000038 obj 80017F78
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F800003C obj 80017F90
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000040 obj 80017FA8
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|THREAD] XThreadF8000044 (12) Stack: 70075000-7007D000 pcr=80018100 tls=80017FC0 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000044 type=80013248) = obj 80018418
+[    0.472|THREAD] KeSetBasePriorityThread(80018418, -2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000044 type=80013248) = obj 80018418
+[    0.472|THREAD] NtResumeThread(F8000044) = 00000000 prev=0
+[    0.472|THREAD] XThreadF8000048 (13) Stack: 70081000-70089000 pcr=80019008 tls=80018EC8 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000048 type=80013248) = obj 80019320
+[    0.472|THREAD] KeSetBasePriorityThread(80019320, -2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000048 type=80013248) = obj 80019320
+[    0.472|THREAD] NtResumeThread(F8000048) = 00000000 prev=0
+[    0.472|THREAD] XThreadF800004C (14) Stack: 7008D000-70095000 pcr=80019F10 tls=80019DD0 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F800004C type=80013248) = obj 8001A228
+[    0.472|THREAD] KeSetBasePriorityThread(8001A228, -2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F800004C type=80013248) = obj 8001A228
+[    0.472|THREAD] NtResumeThread(F800004C) = 00000000 prev=0
+[    0.472|THREAD] XThreadF8000050 (15) Stack: 70099000-700A1000 pcr=8001AE18 tls=8001ACD8 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000050 type=80013248) = obj 8001B130
+[    0.472|THREAD] KeSetBasePriorityThread(8001B130, -2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000050 type=80013248) = obj 8001B130
+[    0.472|THREAD] NtResumeThread(F8000050) = 00000000 prev=0
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000054 obj 8001BBE0
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000058 obj 8001BBF8
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F800005C obj 8001BC10
+[    0.472|TRACE ] >> sub_82A5B9F0
+[    0.472|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.472|THREAD] XThreadF8000060 (16) Stack: 700A5000-700AD000 pcr=8001BD68 tls=8001BC28 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000060 type=80013248) = obj 8001C080
+[    0.472|THREAD] KeSetBasePriorityThread(8001C080, -2)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000060 type=80013248) = obj 8001C080
+[    0.472|THREAD] NtResumeThread(F8000060) = 00000000 prev=0
+[    0.472|THREAD] XThreadF8000064 (17) Stack: 700B1000-700B9000 pcr=8001CC70 tls=8001CB30 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000064 type=80013248) = obj 8001CF88
+[    0.472|THREAD] KeSetBasePriorityThread(8001CF88, 16)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000064 type=80013248) = obj 8001CF88
+[    0.472|THREAD] NtResumeThread(F8000064) = 00000000 prev=0
+[    0.472|THREAD] XThreadF8000068 (18) Stack: 700BD000-700C5000 pcr=8001DB78 tls=8001DA38 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000068 type=80013248) = obj 8001DE90
+[    0.472|THREAD] KeSetBasePriorityThread(8001DE90, 16)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000068 type=80013248) = obj 8001DE90
+[    0.472|THREAD] NtResumeThread(F8000068) = 00000000 prev=0
+[    0.472|THREAD] XThreadF800006C (19) Stack: 700C9000-700D1000 pcr=8001EA80 tls=8001E940 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F800006C type=80013248) = obj 8001ED98
+[    0.472|THREAD] KeSetBasePriorityThread(8001ED98, 16)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F800006C type=80013248) = obj 8001ED98
+[    0.472|THREAD] NtResumeThread(F800006C) = 00000000 prev=0
+[    0.472|THREAD] XThreadF8000070 (20) Stack: 700D5000-700DD000 pcr=8001F988 tls=8001F848 entry=82236A90
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000070 type=80013248) = obj 8001FCA0
+[    0.472|THREAD] KeSetBasePriorityThread(8001FCA0, 16)
+[    0.472|OBJECT] ObReferenceObjectByHandle(F8000070 type=80013248) = obj 8001FCA0
+[    0.472|THREAD] NtResumeThread(F8000070) = 00000000 prev=0
+[    0.474|THREAD] thread 8 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|THREAD] thread 9 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|FILESY] NtOpenFile('D:\')
+[    0.474|FILESY] NtOpenFile('\Device\Cdrom0\') = NO_SUCH_FILE (host '')
+[    0.474|TRACE ] >> sub_82A5B9F0
+[    0.474|TRACE ] << sub_82A5B9F0 r3=00000003
+[    0.474|WARN  ] CS AB7525D4 leave by non-owner 00000000 (owner 80014768)
+[    0.474|THREAD] thread 10 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|WARN  ] CS AB7525D4 leave by non-owner 80014768 (owner 00000000)
+[    0.474|THREAD] thread 11 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|SYNC  ] NtCreateSemaphore(init=0 limit=32000) = handle F8000074 obj 80020750
+[    0.474|THREAD] thread 12 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|TRACE ] >> sub_82A5B9F0
+[    0.474|TRACE ] << sub_82A5B9F0 r3=00000000
+[    0.474|THREAD] XThreadF8000078 (21) Stack: 700E1000-700E5000 pcr=800208A8 tls=80020768 entry=82236A90
+[    0.474|THREAD] thread 15 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|THREAD] thread 16 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|THREAD] thread 17 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|THREAD] thread 14 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|THREAD] thread 13 (entry 82236A90) executing
+[    0.474|THREAD] thread 19 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|THREAD] thread 18 (entry 82236A90) executing
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|THREAD] thread 20 (entry 82236A90) executing
+[    0.474|OBJECT] ObReferenceObjectByHandle(F8000078 type=80013248) = obj 80020BC0
+[    0.474|THREAD] KeSetBasePriorityThread(80020BC0, 16)
+[    0.474|OBJECT] ObReferenceObjectByHandle(F8000078 type=80013248) = obj 80020BC0
+[    0.474|THREAD] NtResumeThread(F8000078) = 00000000 prev=0
+[    0.474|TRACE ] >> sub_82A5BA00
+[    0.474|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.474|FILESY] NtCreateFile('D:\args.txt') disp=1
+[    0.474|FILESY] NtCreateFile('\Device\Cdrom0\args.txt') = NO_SUCH_FILE (host '')
+[    0.477|THREAD] thread 21 (entry 82236A90) executing
+[    0.477|TRACE ] >> sub_82A5BA00
+[    0.477|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.477|GPU   ] VdInitializeEngines(1F2A0003 cb=82A7F228 arg=00000000)
+[    0.477|THREAD] ExRegisterTitleTerminateNotification(82D3F9C8)
+[    0.477|THREAD] ExRegisterTitleTerminateNotification(82D3F9D8)
+[    0.477|GPU   ] VdSetGraphicsInterruptCallback(cb=82A79A00 arg=A64B0080)
+[    0.477|IMPORT] ExGetXConfigSetting(cat=3 set=10) = 00000000 val=00040000
+[    0.477|GPU   ] VdInitializeRingBuffer(ptr=BFD66D40 size=2^12)
+[    0.477|GPU   ] VdEnableRingBufferRPtrWriteBack(ptr=019AFDBC block=2^6)
+[    0.477|THREAD] XThreadF800007C (22) Stack: 700E9000-700F9000 pcr=800217B0 tls=80021670 entry=82A883E8
+[    0.477|OBJECT] ObReferenceObjectByHandle(F800007C type=80013248) = obj 80021AC8
+[    0.477|THREAD] KeSetBasePriorityThread(80021AC8, 17)
+[    0.477|THREAD] XThreadF8000080 (23) Stack: 700FD000-7010D000 pcr=800226B8 tls=80022578 entry=82A883E8
+[    0.477|OBJECT] ObReferenceObjectByHandle(F8000080 type=80013248) = obj 800229D0
+[    0.477|THREAD] KeSetBasePriorityThread(800229D0, 17)
+[    0.479|GPU   ] VdCallGraphicsNotificationRoutines -> guest cb 82A79A00
+[    0.479|THREAD] thread 23 (entry 82A883E8) executing
+[    0.479|TRACE ] >> sub_82A5BA00
+[    0.479|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.479|WARN  ] KeWaitForSingleObject: unknown object A64B2DD0 (hdr type=0 lr=82A88484 thread=23) — adopting as event
+[    0.481|THREAD] thread 22 (entry 82A883E8) executing
+[    0.481|TRACE ] >> sub_82A5BA00
+[    0.481|TRACE ] << sub_82A5BA00 r3=82D3EEA4
+[    0.481|WARN  ] KeWaitForSingleObject: unknown object A64B2D80 (hdr type=0 lr=82A88484 thread=22) — adopting as event
+[    0.481|GPU   ] VdRetrainEDRAM(00000001)
+[    0.481|GPU   ] VdRetrainEDRAM(00000001)
+[    5.472|THREAD] === thread status (17 live) ===
+[    5.472|THREAD]   tid=7   entry=82A52C00 lr=82AE3A00 r1=7003F710 running
+[    5.472|THREAD]   tid=8   entry=82236A90 lr=82A5E9A0 r1=7004CD30 running
+[    5.472|THREAD]   tid=9   entry=82236A90 lr=82A5E9A0 r1=70058AC0 running
+[    5.472|THREAD]   tid=10  entry=82236A90 lr=82A5E9A0 r1=70064AC0 running
+[    5.472|THREAD]   tid=11  entry=82236A90 lr=82A5E9A0 r1=70070AC0 running
+[    5.472|THREAD]   tid=12  entry=82236A90 lr=82A5E9A0 r1=7007CAC0 running
+[    5.472|THREAD]   tid=13  entry=82236A90 lr=82A5E9A0 r1=70088AC0 running
+[    5.472|THREAD]   tid=14  entry=82236A90 lr=82A5E9A0 r1=70094AC0 running
+[    5.472|THREAD]   tid=15  entry=82236A90 lr=82A5E9A0 r1=700A0AC0 running
+[    5.472|THREAD]   tid=16  entry=82236A90 lr=82A5E9A0 r1=700ACAC0 running
+[    5.472|THREAD]   tid=17  entry=82236A90 lr=82A5E9A0 r1=700B8AC0 running
+[    5.472|THREAD]   tid=18  entry=82236A90 lr=82A5E9A0 r1=700C4AC0 running
+[    5.472|THREAD]   tid=19  entry=82236A90 lr=82A5E9A0 r1=700D0AC0 running
+[    5.472|THREAD]   tid=20  entry=82236A90 lr=82A5E9A0 r1=700DCAC0 running
+[    5.472|THREAD]   tid=21  entry=82236A90 lr=82A68F28 r1=700E41F0 running
+[    5.472|THREAD]   tid=22  entry=82A883E8 lr=82A88484 r1=700F8E20 running
+[    5.472|THREAD]   tid=23  entry=82A883E8 lr=82A88484 r1=7010CE20 running
+[    5.472|THREAD]   stack chain tid=7:
+[    5.472|THREAD]     frame0 r1=7003F780 ret=82AE3A00
+[    5.472|THREAD]     frame1 r1=7003F7E0 ret=00000000
+[    5.472|THREAD]     frame2 r1=7003F850 ret=00000000
+[    5.472|THREAD]     frame3 r1=7003F8B0 ret=00000000
+[    5.472|THREAD]     frame4 r1=7003FD70 ret=00000000
+[    5.472|THREAD]     frame5 r1=700408F0 ret=00000000
+[    5.472|THREAD]     frame6 r1=70040D60 ret=00000000
+[    5.472|THREAD]     frame7 r1=70040F50 ret=00000000
+[    5.472|THREAD]   ret-addr scan tid=7 (r1=7003F710..base=70041000):
+[    5.473|THREAD]     [7003F778] = 82AE3A80 (sub_82AE3A20+96)
+[    5.473|THREAD]     [7003F7D8] = 82ADE2B4 (sub_82ADE278+60)
+[    5.473|THREAD]     [7003F848] = 82AD27F8 (sub_82AD27E0+24)
+[    5.473|THREAD]     [7003F8A8] = 82267DEC (sub_82267DB0+60)
+[    5.473|THREAD]     [7003F8F8] = 82235A58 (sub_822354F0+1384)
+[    5.473|THREAD]     [7003F938] = 82235A58 (sub_822354F0+1384)
+[    5.473|THREAD]     [7003F968] = 82231E14 (sub_82231DF0+36)
+[    5.473|THREAD]     [7003F988] = 82235C98 (sub_82235C60+56)
+[    5.473|THREAD]     [7003F9A8] = 82236CA0 (sub_82236B78+296)
+[    5.473|THREAD]     [7003FA08] = 82235C98 (sub_82235C60+56)
+[    5.473|THREAD]     [7003FA38] = 82231EE4 (sub_82231EC0+36)
+[    5.473|THREAD]     [7003FA48] = 82230B8C (sub_82230B58+52)
+[    5.473|THREAD]     [7003FA68] = 82236CA0 (sub_82236B78+296)
+[    5.473|THREAD]     [7003FA88] = 82230B8C (sub_82230B58+52)
+[    5.473|THREAD]     [7003FAA8] = 82AE2DAC (sub_82AE2D48+100)
+[    5.473|THREAD]     [7003FAB8] = 82AEA0E0 (sub_82AEA010+208)
+[    5.473|THREAD]     [7003FAF8] = 82AEB3F4 (sub_82AEB318+220)
+[    5.473|THREAD]     [7003FB18] = 82AE2E60 (sub_82AE2E48+24)
+[    5.473|THREAD]     [7003FB48] = 82AEA9D8 (sub_82AEA980+88)
+[    5.473|THREAD]     [7003FB78] = 82AE53FC (sub_82AE5350+172)
+[    5.473|THREAD]     [7003FB88] = 82235C98 (sub_82235C60+56)
+[    5.473|THREAD]     [7003FBB8] = 82AE58A4 (sub_82AE5760+324)
+[    5.473|THREAD]     [7003FBE8] = 82ADE408 (sub_82ADE2C8+320)
+[    5.473|THREAD]     [7003FC28] = 82AE4D78 (sub_82AE4D18+96)
+[    5.473|THREAD]     [7003FC38] = 82ADDE40 (sub_82ADDD88+184)
+[    5.473|THREAD]     [7003FC58] = 82236CA0 (sub_82236B78+296)
+[    5.473|THREAD]     [7003FC88] = 82231EE4 (sub_82231EC0+36)
+[    5.473|THREAD]     [7003FCE8] = 8226498C (sub_822648F8+148)
+[    5.473|THREAD]     [7003FCF8] = 82AD4008 (sub_82AD3EE0+296)
+[    5.473|THREAD]     [7003FD08] = 8239D310 (sub_8239D2F0+32)
+[    5.473|THREAD]     [7003FD68] = 8223A05C (sub_82239F58+260)
+[    5.473|THREAD]     [700408E8] = 8223003C (sub_82230000+60)
+[    5.473|THREAD]     [70040948] = 82B85348 (sub_82B84420+3880)
+[    5.473|THREAD]     [70040C18] = 82AF0A70 (sub_82AF0A58+24)
+[    5.473|THREAD]     [70040C28] = 82238E74 (sub_82238E58+28)
+[    5.473|THREAD]     [70040C78] = 82BA1130 (sub_82BA1100+48)
+[    5.473|THREAD]     [70040C88] = 82BA0EF4 (sub_82BA0ED0+36)
+[    5.473|THREAD]     [70040CE8] = 82A5E6A0 (sub_82A5E5E8+184)
+[    5.473|THREAD]     [70040CF8] = 82A5E820 (sub_82A5E810+16)
+[    5.473|THREAD]     [70040D58] = 82A52D90 (sub_82A52C00+400)
+[    5.473|THREAD]   ret-addr scan tid=8 (r1=7004CD30..base=7004D000):
+[    5.473|THREAD]     [7004CD38] = 82AE5EEC (sub_82AE5E88+100)
+[    5.473|THREAD]     [7004CD48] = 8223ABE4 (sub_8223AB30+180)
+[    5.473|THREAD]     [7004CDA8] = 82AEB888 (sub_82AEB6F8+400)
+[    5.473|THREAD]     [7004CDE8] = 82A534B4 (sub_82A53470+68)
+[    5.473|THREAD]     [7004CE58] = 82236ADC (sub_82236A90+76)
+[    5.473|THREAD]     [7004CEBC] = 82236A90 (sub_82236A90)
+[    5.473|THREAD]     [7004CEC8] = 82A687CC (sub_82A68790+60)
+[    5.473|THREAD]   job-system globals:
+[    5.473|THREAD]     [82DF5118] jobsys CS          = 01010000
+[    5.473|THREAD]     [82DF5145] active flag        = 00010000
+[    5.473|THREAD]     [82DF5148] dispatch param     = 00000007
+[    5.473|THREAD]     [82DF514C] limit 0x8000?      = 00008000
+[    5.473|THREAD]     [82DF5150] worker count       = 00000001
+[    5.473|THREAD]     [82DF5154] default submit obj = 00000000
+[    5.473|THREAD]     worker[0] name='D:' obj=AB7523E0 flag=00
+[    5.473|THREAD]   DriveThread obj=AB7523E0 vtbl=82101DE4
+[    5.473|THREAD]     +00C queue obj    = 82101DC8
+[    5.473|THREAD]     +054 list head    = 00000000
+[    5.473|THREAD]     +058 list last    = 00000000
+[    5.473|THREAD]     +068 cur request  = 00000000
+[    5.473|THREAD]     +070 flag112      = 01000000
+[    5.473|THREAD]     +074 cur req ptr  = A19AE8B0
+[    5.473|THREAD]     +079 busy121      = 00000000
+[    5.473|THREAD]     +0D0 f208         = AB7523E0
+[   10.473|THREAD] === thread status (17 live) ===
+[   10.473|THREAD]   tid=7   entry=82A52C00 lr=82AE6240 r1=7003F6F0 running
+[   10.473|THREAD]   tid=8   entry=82236A90 lr=82A5E9A0 r1=7004CD30 running
+[   10.473|THREAD]   tid=9   entry=82236A90 lr=82A5E9A0 r1=70058AC0 running
+[   10.473|THREAD]   tid=10  entry=82236A90 lr=82A5E9A0 r1=70064AC0 running
+[   10.473|THREAD]   tid=11  entry=82236A90 lr=82A5E9A0 r1=70070AC0 running
+[   10.473|THREAD]   tid=12  entry=82236A90 lr=82A5E9A0 r1=7007CAC0 running
+[   10.473|THREAD]   tid=13  entry=82236A90 lr=82A5E9A0 r1=70088AC0 running
+[   10.473|THREAD]   tid=14  entry=82236A90 lr=82A5E9A0 r1=70094AC0 running
+[   10.473|THREAD]   tid=15  entry=82236A90 lr=82A5E9A0 r1=700A0AC0 running
+[   10.473|THREAD]   tid=16  entry=82236A90 lr=82A5E9A0 r1=700ACAC0 running
+[   10.473|THREAD]   tid=17  entry=82236A90 lr=82A5E9A0 r1=700B8AC0 running
+[   10.473|THREAD]   tid=18  entry=82236A90 lr=82A5E9A0 r1=700C4AC0 running
+[   10.473|THREAD]   tid=19  entry=82236A90 lr=82A5E9A0 r1=700D0AC0 running
+[   10.473|THREAD]   tid=20  entry=82236A90 lr=82A5E9A0 r1=700DCAC0 running
+[   10.473|THREAD]   tid=21  entry=82236A90 lr=82A68EB0 r1=700E41F0 running
+[   10.473|THREAD]   tid=22  entry=82A883E8 lr=82A88484 r1=700F8E20 running
+[   10.473|THREAD]   tid=23  entry=82A883E8 lr=82A88484 r1=7010CE20 running
+[   15.473|THREAD] === thread status (17 live) ===
+[   15.473|THREAD]   tid=7   entry=82A52C00 lr=82AE3A00 r1=7003F710 running
+[   15.473|THREAD]   tid=8   entry=82236A90 lr=82A5E9A0 r1=7004CD30 running
+[   15.473|THREAD]   tid=9   entry=82236A90 lr=82A5E9A0 r1=70058AC0 running
+[   15.473|THREAD]   tid=10  entry=82236A90 lr=82A5E9A0 r1=70064AC0 running
+[   15.473|THREAD]   tid=11  entry=82236A90 lr=82A5E9A0 r1=70070AC0 running
+[   15.473|THREAD]   tid=12  entry=82236A90 lr=82A5E9A0 r1=7007CAC0 running
+[   15.473|THREAD]   tid=13  entry=82236A90 lr=82A5E9A0 r1=70088AC0 running
+[   15.473|THREAD]   tid=14  entry=82236A90 lr=82A5E9A0 r1=70094AC0 running
+[   15.473|THREAD]   tid=15  entry=82236A90 lr=82A5E9A0 r1=700A0AC0 running
+[   15.473|THREAD]   tid=16  entry=82236A90 lr=82A5E9A0 r1=700ACAC0 running
+[   15.473|THREAD]   tid=17  entry=82236A90 lr=82A5E9A0 r1=700B8AC0 running
+[   15.473|THREAD]   tid=18  entry=82236A90 lr=82A5E9A0 r1=700C4AC0 running
+[   15.473|THREAD]   tid=19  entry=82236A90 lr=82A5E9A0 r1=700D0AC0 running
+[   15.473|THREAD]   tid=20  entry=82236A90 lr=82A5E9A0 r1=700DCAC0 running
+[   15.473|THREAD]   tid=21  entry=82236A90 lr=82A7A358 r1=700E4260 running
+[   15.473|THREAD]   tid=22  entry=82A883E8 lr=82A88484 r1=700F8E20 running
+[   15.473|THREAD]   tid=23  entry=82A883E8 lr=82A88484 r1=7010CE20 running
