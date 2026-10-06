@@ -380,6 +380,7 @@ void XenosSetRingRegs(uint32_t rb_base_pa, uint32_t rptr_wb_pa);
 
 // GPU statistics for the watchdog.
 uint64_t XenosGpuStats(uint32_t* packets, uint32_t* ibs, uint32_t* waits,
-                       uint32_t* ints);
+                       uint32_t* ints, uint64_t* draws = nullptr,
+                       uint64_t* shaders = nullptr);
 
 }  // namespace pr

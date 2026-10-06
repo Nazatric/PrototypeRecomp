@@ -709,7 +709,9 @@ static void DumpGpuRingState() {
     uint32_t ring = K().vd_ring_buffer_ptr;
     uint32_t wb = K().vd_rptr_writeback_ptr;
     uint32_t packets = 0, ibs = 0, waits = 0, ints = 0;
-    uint64_t frames = XenosGpuStats(&packets, &ibs, &waits, &ints);
+    uint64_t draws = 0, shaders = 0;
+    uint64_t frames = XenosGpuStats(&packets, &ibs, &waits, &ints,
+                                    &draws, &shaders);
     if (ring) {
         PRLOG(Thread, "    ring(PA)=%08X ring(VA)=%08X log2=%u", ring,
               (ring < 0x20000000u) ? (ring | 0xA0000000u) : ring,
@@ -721,10 +723,11 @@ static void DumpGpuRingState() {
                   LoadU32((wb < 0x20000000u) ? (wb | 0xA0000000u) : wb));
         }
         PRLOG(Thread, "    gpu stats: frames=%llu packets=%llu ibs=%llu "
-              "blocked_waits=%llu interrupts=%llu",
+              "blocked_waits=%llu interrupts=%llu draws=%llu shaders=%llu",
               (unsigned long long)frames, (unsigned long long)packets,
               (unsigned long long)ibs, (unsigned long long)waits,
-              (unsigned long long)ints);
+              (unsigned long long)ints, (unsigned long long)draws,
+              (unsigned long long)shaders);
         uint32_t ring_va = (ring < 0x20000000u) ? (ring | 0xA0000000u) : ring;
         // First 24 words of the ring.
         for (int i = 0; i < 24; i++) {

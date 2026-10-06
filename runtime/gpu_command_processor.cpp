@@ -117,8 +117,26 @@ struct XenosGpu {
     std::atomic<uint64_t> interrupts_dropped{0};   // pre-ISR-registration
     std::atomic<uint64_t> ibs_executed{0};
     std::atomic<uint64_t> waits_blocked{0};
+    std::atomic<uint64_t> draws_seen{0};
+    std::atomic<uint64_t> im_loads_seen{0};
 
     std::mutex interrupt_mtx;                     // serialize guest ISR runs
+
+    // -------- draw-state provenance: last register writes before a draw.
+    // Recorded by GpuSetReg so a DRAW dump shows exactly the state the
+    // game's command stream referenced (no speculative decoding).
+    struct RegWrite { uint16_t idx; uint32_t value; };
+    RegWrite reg_writes[96] = {};
+    uint32_t reg_write_pos = 0;
+    uint64_t reg_write_seq = 0;
+    void RecordRegWrite(uint32_t idx, uint32_t value) {
+        if (idx >= 0x4000) return;
+        RegWrite& w = reg_writes[reg_write_pos % 96];
+        w.idx = (uint16_t)idx;
+        w.value = value;
+        reg_write_pos++;
+        if (reg_write_pos >= 96) reg_write_pos = 0;   // ring
+    }
 
     // Register storage mirrors guest memory at 0x7FC80000..+0x10000 so that
     // plain (non-MM) guest reads observe the same values.
@@ -141,7 +159,50 @@ bool g_cp_running = false;
 
 // Free-standing register accessors (used by the CP and packet handlers).
 uint32_t GpuGetReg(uint32_t idx) { return g_gpu.GetReg(idx); }
-void GpuSetReg(uint32_t idx, uint32_t v) { g_gpu.SetReg(idx, v); }
+void GpuSetReg(uint32_t idx, uint32_t v) {
+    g_gpu.SetReg(idx, v);
+    g_gpu.RecordRegWrite(idx, v);
+}
+
+// Dump the draw-state provenance: the last register writes recorded before
+// this draw (ring order, oldest first) plus key Xenos draw registers.
+static void DumpDrawState(const char* trigger) {
+    PRLOG(Gpu, "  draw state @ %s: recent register writes (oldest->newest):",
+          trigger);
+    uint32_t n = g_gpu.reg_write_pos < 96 ? g_gpu.reg_write_pos : 96;
+    char line[512];
+    size_t off = 0;
+    for (uint32_t k = 0; k < n; k++) {
+        auto& w = g_gpu.reg_writes[k];
+        if (off == 0) off += snprintf(line + off, sizeof(line) - off, "   ");
+        off += snprintf(line + off, sizeof(line) - off, "r%04X=%08X ", w.idx,
+                         w.value);
+        if (off > 108) {   // ~8 regs per line
+            line[off] = 0;
+            PRLOG(Gpu, "%s", line);
+            off = 0;
+        }
+    }
+    if (off) { line[off] = 0; PRLOG(Gpu, "%s", line); }
+    // Key draw registers (Xenia register_table indices; reg*4 = MMIO offset).
+    struct { uint32_t idx; const char* name; } keys[] = {
+        {0x0409, "PA_SU_SC_MODE_CNTL"}, {0x0408, "PA_SU_VTX_CNTL"},
+        {0x0480, "PA_CL_CLIP_CNTL"},     {0x0400, "PA_SC_SCREEN_SCISSOR"},
+        {0x0484, "PA_CL_VTE_CNTL"},      {0x2182, "VGT_DRAW_INITIATOR"},
+        {0x2184, "VGT_PRIMITIVE_TYPE"},  {0x21C4, "VGT_INDX_OFFSET"},
+        {0x2380, "SQ_PROGRAM_CNTL"},     {0x2381, "SQ_CONTEXT_MISC"},
+        {0x0A2F, "COHER_SIZE_HOST"},     {0x0A30, "COHER_BASE_HOST"},
+        {0x1844, "D1GRPH_PRIMARY"},      {0x1961, "D1MODE_VIEWPORT"},
+    };
+    off = 0;
+    for (auto& k : keys) {
+        if (off == 0) off += snprintf(line + off, sizeof(line) - off, "   ");
+        off += snprintf(line + off, sizeof(line) - off, "%s=%08X ", k.name,
+                         GpuGetReg(k.idx));
+        if (off > 108) { line[off] = 0; PRLOG(Gpu, "%s", line); off = 0; }
+    }
+    if (off) { line[off] = 0; PRLOG(Gpu, "%s", line); }
+}
 
 // ============================================================== interrupt ABI
 // Invoke the game's graphics-interrupt callback with the authentic
@@ -710,6 +771,126 @@ struct XenosCP {
                         }
                         break;
                     }
+                    case PM4_DRAW_INDX_2:
+                    case PM4_DRAW_INDX_2_BIN: {
+                        // Observed from this title: count=1, single dword =
+                        // the VGT_DRAW_INITIATOR value (0x00010081: src_sel=1
+                        // IMMEDIATE, major=0, inst=1). The standard Xenia
+                        // 2-dword form (prim_type, num_indices) is handled
+                        // when count>=2; num_indices otherwise comes from
+                        // VGT state (pinned once volume draws flow).
+                        uint32_t initiator   = ReadRing(base_va, ring_bytes, i + 1);
+                        uint32_t num_indices = count >= 2
+                            ? ReadRing(base_va, ring_bytes, i + 2) : 0;
+                        uint32_t src_sel = initiator & 3;          // 0 DMA,1 IMM,2 AUTO
+                        uint32_t major_mode = (initiator >> 2) & 3;
+                        uint32_t prim_type = (initiator >> 12) & 0xF;
+                        uint32_t num_instances = (initiator >> 16) & 0xFFFFF;
+                        GpuSetReg(0x2182 /*VGT_DRAW_INITIATOR*/, initiator);
+                        g_gpu.draws_seen++;
+                        bool verbose = g_gpu.draws_seen <= 32 ||
+                                       (g_gpu.draws_seen % 256) == 0;
+                        PRLOG(Gpu, "DRAW_INDX_2 #%llu: initiator=%08X "
+                                   "(src_sel=%u major=%u prim=%u inst=%u) "
+                                   "num_indices=%u%s",
+                              (unsigned long long)g_gpu.draws_seen.load(),
+                              initiator, src_sel, major_mode, prim_type,
+                              num_instances, num_indices,
+                              opcode == PM4_DRAW_INDX_2_BIN ? " [BIN]" : "");
+                        if (verbose) {
+                            // Raw payload evidence (first 6 dwords) to pin
+                            // the exact packet layout before deeper decode.
+                            if (g_gpu.draws_seen <= 8) {
+                                char raw[160];
+                                size_t o = 0;
+                                for (uint32_t k = 1; k <= 6 && k < count + 1;
+                                     k++) {
+                                    o += snprintf(raw + o, sizeof(raw) - o,
+                                                  "w%u=%08X ", k,
+                                                  ReadRing(base_va, ring_bytes,
+                                                           i + k));
+                                }
+                                PRLOG(Gpu, "  draw2 raw: %s(count=%u)", raw,
+                                      count);
+                            }
+                            DumpDrawState(opcode == PM4_DRAW_INDX_2_BIN
+                                              ? "draw2bin" : "draw2");
+                        }
+                        break;
+                    }
+                    case PM4_DRAW_INDX:
+                    case PM4_DRAW_INDX_BIN: {
+                        // { VGT_DRAW_INITIATOR, base_addr_lo, base_addr_hi,
+                        //   num_indices, index_size (16/32) }: DMA-indexed.
+                        uint32_t initiator = ReadRing(base_va, ring_bytes, i + 1);
+                        uint32_t base_lo   = ReadRing(base_va, ring_bytes, i + 2);
+                        uint32_t base_hi   = ReadRing(base_va, ring_bytes, i + 3);
+                        uint32_t num_idx   = ReadRing(base_va, ring_bytes, i + 4);
+                        uint32_t idx_sz    = ReadRing(base_va, ring_bytes, i + 5);
+                        GpuSetReg(0x2182 /*VGT_DRAW_INITIATOR*/, initiator);
+                        g_gpu.draws_seen++;
+                        bool verbose = g_gpu.draws_seen <= 32 ||
+                                       (g_gpu.draws_seen % 256) == 0;
+                        PRLOG(Gpu, "DRAW_INDX #%llu: initiator=%08X "
+                                   "base=%08X:%08X num_indices=%u index_size=%u",
+                              (unsigned long long)g_gpu.draws_seen.load(),
+                              initiator, base_hi, base_lo, num_idx, idx_sz);
+                        if (verbose) DumpDrawState("draw");
+                        break;
+                    }
+                    case PM4_IM_LOAD_IMMEDIATE: {
+                        // Shader load (IMMEDIATE form): payload = shader
+                        // type/address/size words. Log raw + best-guess
+                        // decode; refine from evidence once dumps accumulate.
+                        uint32_t w0 = ReadRing(base_va, ring_bytes, i + 1);
+                        uint32_t w1 = ReadRing(base_va, ring_bytes, i + 2);
+                        uint32_t w2 = ReadRing(base_va, ring_bytes, i + 3);
+                        g_gpu.im_loads_seen++;
+                        PRLOG(Gpu, "IM_LOAD_IMMEDIATE #%llu: type=%u "
+                                   "(raw w0=%08X) addr=%08X size/len=%08X "
+                                   "(%u dwords)",
+                              (unsigned long long)g_gpu.im_loads_seen.load(),
+                              w0 & 3, w0, w1, w2, w2);
+                        break;
+                    }
+                    case PM4_IM_LOAD: {
+                        uint32_t w0 = ReadRing(base_va, ring_bytes, i + 1);
+                        uint32_t w1 = ReadRing(base_va, ring_bytes, i + 2);
+                        uint32_t w2 = ReadRing(base_va, ring_bytes, i + 3);
+                        g_gpu.im_loads_seen++;
+                        PRLOG(Gpu, "IM_LOAD #%llu: raw w0=%08X w1=%08X w2=%08X",
+                              (unsigned long long)g_gpu.im_loads_seen.load(),
+                              w0, w1, w2);
+                        break;
+                    }
+                    case PM4_SET_SHADER_CONSTANTS:
+                    case PM4_SET_CONSTANT:
+                    case PM4_SET_CONSTANT2: {
+                        // { const_addr, data... }: const bank/offset in the
+                        // first word. Log the addressing (first 2 dwords) at
+                        // low volume; the data words follow in the stream.
+                        static std::atomic<uint64_t> s_consts{0};
+                        uint64_t n = s_consts.fetch_add(1) + 1;
+                        if (n <= 64 || (n % 1024) == 0) {
+                            uint32_t const_addr = ReadRing(base_va, ring_bytes,
+                                                           i + 1);
+                            uint32_t d0 = ReadRing(base_va, ring_bytes, i + 2);
+                            uint32_t d1 = count >= 2
+                                ? ReadRing(base_va, ring_bytes, i + 3) : 0;
+                            PRLOG(Gpu, "%s #%llu: const_addr=%08X count=%u "
+                                       "d0=%08X d1=%08X",
+                                  Type3OpcodeName(opcode),
+                                  (unsigned long long)n, const_addr, count,
+                                  d0, d1);
+                        }
+                        break;
+                    }
+                    case PM4_SET_SHADER_BASES: {
+                        uint32_t bases = ReadRing(base_va, ring_bytes, i + 1);
+                        PRLOG(Gpu, "SET_SHADER_BASES: %08X (vs/ps base swap)",
+                              bases);
+                        break;
+                    }
                     case PM4_SWAP: {
                         // Xbox 360 frontbuffer swap packet (VdSwap path).
                         // Payload observed from the game's D3D: mostly
@@ -934,11 +1115,13 @@ void XenosSetRingRegs(uint32_t rb_base_pa, uint32_t rptr_wb_pa) {
 }
 
 uint64_t XenosGpuStats(uint32_t* packets, uint32_t* ibs, uint32_t* waits,
-                       uint32_t* ints) {
+                       uint32_t* ints, uint64_t* draws, uint64_t* shaders) {
     if (packets) *packets = (uint32_t)g_gpu.packets_parsed.load();
     if (ibs)     *ibs     = (uint32_t)g_gpu.ibs_executed.load();
     if (waits)   *waits   = (uint32_t)g_gpu.waits_blocked.load();
     if (ints)    *ints    = (uint32_t)g_gpu.interrupts_fired.load();
+    if (draws)   *draws   = g_gpu.draws_seen.load();
+    if (shaders) *shaders = g_gpu.im_loads_seen.load();
     return g_gpu.frame_counter.load();
 }
 
