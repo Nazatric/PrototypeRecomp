@@ -27,6 +27,22 @@ GuestSemaphore* LookupInPlaceSemaphore(uint32_t addr);
 void FindThreadByKThread(uint32_t kthread, GuestThread** out);
 KernelObject* ResolveGuestObjectPtr(uint32_t guest_ptr);
 
+// Host monotonic ms (wait-duration accounting for the watchdog).
+static inline uint64_t WaitNowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// RAII: record the active wait on the current guest thread; clears on any
+// return path so the watchdog never shows a stale "blocked" state.
+struct WaitScope {
+    GuestThread* t;
+    WaitScope(uint32_t obj, uint32_t lr) : t(GuestThread::GetCurrent()) {
+        if (t) { t->wait_obj = obj; t->wait_lr = lr; t->wait_start_ms = WaitNowMs(); }
+    }
+    ~WaitScope() { if (t) t->wait_obj = 0; }
+};
+
 // =============================================================== memory
 
 IMPORT(ExAllocatePoolTypeWithTag) {
@@ -718,6 +734,12 @@ IMPORT(KeWaitForSingleObject) {
 
     // The object_ptr is a GUEST object address (KEVENT/KSEMAPHORE/KTHREAD).
     KernelObject* obj = ResolveGuestObjectPtr(obj_ptr);
+    GuestThread* self = GuestThread::GetCurrent();
+    if (self) {
+        self->wait_obj = obj_ptr;
+        self->wait_lr = (uint32_t)ctx.lr;
+        self->wait_start_ms = WaitNowMs();
+    }
     if (!obj) {
         // Lazily adopt in-place guest objects by their DISPATCH_HEADER type
         // byte (games hand-initialize D3D pool events without imports).
@@ -739,6 +761,7 @@ IMPORT(KeWaitForSingleObject) {
         obj = RegisterInPlaceEvent(obj_ptr, true, LoadU8(obj_ptr + 1) != 0);
     }
     int r = WaitSingleObjectKernel(obj, timeout, have_timeout);
+    if (self) self->wait_obj = 0;
     if (r == 0x102 && have_timeout && timeout == 0) {
         // zero timeout: not an error, STATUS_TIMEOUT reported to caller.
     }
@@ -758,7 +781,14 @@ IMPORT(NtWaitForSingleObjectEx) {
         PRLOGW("NtWaitForSingleObjectEx: bad handle %08X", handle);
         RET(X_STATUS_INVALID_HANDLE);
     }
+    GuestThread* self_w = GuestThread::GetCurrent();
+    if (self_w) {
+        self_w->wait_obj = handle;
+        self_w->wait_lr = (uint32_t)ctx.lr;
+        self_w->wait_start_ms = WaitNowMs();
+    }
     uint32_t status = (uint32_t)WaitSingleObjectKernel(obj, timeout, have_timeout);
+    if (self_w) self_w->wait_obj = 0;
     // Log each unique (handle, tid) wait once — reveals who blocks on what.
     // Also log wake-ups for semaphore objects (deadlock diagnosis).
     if (dynamic_cast<GuestSemaphore*>(obj)) {
@@ -784,6 +814,7 @@ IMPORT(NtWaitForMultipleObjectsEx) {
     uint64_t timeout = 0;
     bool have_timeout = timeout_ptr != 0;
     if (timeout_ptr) timeout = LoadU64(timeout_ptr);
+    WaitScope wscope(count > 0 ? LoadU32(handles_ptr) : 0, (uint32_t)ctx.lr);
 
     std::vector<KernelObject*> objs;
     for (uint32_t i = 0; i < count; i++) {

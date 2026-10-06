@@ -7,6 +7,7 @@
 #include "state.h"
 
 #include <unistd.h>
+#include <atomic>
 
 namespace pr {
 
@@ -50,6 +51,45 @@ void __imp__sub_82AE4020(PPCContext&, uint8_t*);
 void __imp__sub_82AE5FA8(PPCContext&, uint8_t*);
 void __imp__sub_82AEB318(PPCContext&, uint8_t*);
 void __imp__sub_82AE2948(PPCContext&, uint8_t*);
+// Main-thread async-wait chain (Phase 2C content-pipeline investigation):
+// the boot state machine pumps these while waiting on an async operation.
+void __imp__sub_82B84420(PPCContext&, uint8_t*);
+void __imp__sub_82238E58(PPCContext&, uint8_t*);
+void __imp__sub_82AF0A58(PPCContext&, uint8_t*);
+void __imp__sub_823F5768(PPCContext&, uint8_t*);
+void __imp__sub_8239D438(PPCContext&, uint8_t*);
+void __imp__sub_82365288(PPCContext&, uint8_t*);
+void __imp__sub_823F3BB8(PPCContext&, uint8_t*);
+void __imp__sub_823F3C40(PPCContext&, uint8_t*);
+void __imp__sub_823F3D88(PPCContext&, uint8_t*);
+void __imp__sub_823F3ED8(PPCContext&, uint8_t*);
+void __imp__sub_82239F58(PPCContext&, uint8_t*);
+void __imp__sub_822509C8(PPCContext&, uint8_t*);
+void __imp__sub_82267718(PPCContext&, uint8_t*);
+void __imp__sub_82267C10(PPCContext&, uint8_t*);
+void __imp__sub_8226E260(PPCContext&, uint8_t*);
+void __imp__sub_82230B58(PPCContext&, uint8_t*);
+void __imp__sub_82230DE0(PPCContext&, uint8_t*);
+void __imp__sub_827E1E58(PPCContext&, uint8_t*);
+void __imp__sub_827E1F80(PPCContext&, uint8_t*);
+// Display-subsystem init chain (tid26 = sub_8226DD70 entry): where does the
+// display init stall? All hooked HOT (they may sit in spin loops).
+void __imp__sub_8226DD70(PPCContext&, uint8_t*);
+void __imp__sub_8226DA40(PPCContext&, uint8_t*);
+void __imp__sub_82807120(PPCContext&, uint8_t*);
+void __imp__sub_8280C460(PPCContext&, uint8_t*);
+void __imp__sub_827F9428(PPCContext&, uint8_t*);
+void __imp__sub_82807710(PPCContext&, uint8_t*);
+void __imp__sub_827F98F0(PPCContext&, uint8_t*);
+void __imp__sub_82AD2D18(PPCContext&, uint8_t*);
+void __imp__sub_822309C8(PPCContext&, uint8_t*);
+void __imp__sub_82235C60(PPCContext&, uint8_t*);
+void __imp__sub_82806900(PPCContext&, uint8_t*);
+void __imp__sub_82807C30(PPCContext&, uint8_t*);
+void __imp__sub_8280AD80(PPCContext&, uint8_t*);
+void __imp__sub_82807668(PPCContext&, uint8_t*);
+void __imp__sub_82806A08(PPCContext&, uint8_t*);
+void __imp__sub_82267FB0(PPCContext&, uint8_t*);
 }
 
 #define TRACE_HOOK(name)                                                    \
@@ -138,6 +178,89 @@ TRACE_HOOK_ARGS(sub_82AE4020, "r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X r8=%08X")
 TRACE_HOOK(sub_82AE5FA8)
 TRACE_HOOK_ARGS(sub_82AEB318, "r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X r8=%08X")
 TRACE_HOOK(sub_82AE2948)
+
+// ---- main-thread async-wait chain (content-pipeline investigation) ----
+// Cold path (called once per boot): full args + first string at r3/r4.
+#define TRACE_HOOK_COLD(name)                                                \
+    void name(PPCContext& ctx, uint8_t* base) {                              \
+        if (::pr::g_trace_hooks) {                                           \
+            char s1[48] = {0}, s2[48] = {0};                                 \
+            auto rdstr = [](uint32_t p, char* out) {                         \
+                if (p >= 0x82000000 && p < 0xC0000000) {                     \
+                    for (int i = 0; i < 47; i++) {                            \
+                        uint8_t c = *(uint8_t*)(::pr::g_guest_base +          \
+                            (uint64_t)(p + i));                              \
+                        out[i] = (char)c;                                     \
+                        if (!c) break;                                        \
+                    }                                                         \
+                }                                                             \
+            };                                                                \
+            rdstr(ctx.r3.u32, s1); rdstr(ctx.r4.u32, s2);                    \
+            ::pr::LogLine(::pr::LogCategory::kTrace,                          \
+                          ">> %s(r3=%08X '%s' r4=%08X '%s' r5=%08X r6=%08X " \
+                          "r7=%08X) [lr=%08X tid=%u]", #name,               \
+                          ctx.r3.u32, s1, ctx.r4.u32, s2, ctx.r5.u32,        \
+                          ctx.r6.u32, ctx.r7.u32, (uint32_t)ctx.lr,          \
+                          ::pr::GuestThread::GetCurrent()                     \
+                              ? ::pr::GuestThread::GetCurrent()->thread_id : 0);\
+        }                                                                     \
+        __imp__##name(ctx, base);                                             \
+        if (::pr::g_trace_hooks)                                             \
+            ::pr::LogLine(::pr::LogCategory::kTrace,                         \
+                          "<< %s r3=%08X", #name, ctx.r3.u32);               \
+    }
+
+// Hot spin-loop functions: log the first 4 calls only (disk safety).
+#define TRACE_HOOK_HOT(name)                                                 \
+    void name(PPCContext& ctx, uint8_t* base) {                              \
+        static std::atomic<uint64_t> n{0};                                   \
+        if (::pr::g_trace_hooks && n.fetch_add(1) < 4)                       \
+            ::pr::LogLine(::pr::LogCategory::kTrace,                         \
+                          ">> %s(r3=%08X r4=%08X r5=%08X) [lr=%08X] #%llu",\
+                          #name, ctx.r3.u32, ctx.r4.u32, ctx.r5.u32,          \
+                          (uint32_t)ctx.lr,                                  \
+                          (unsigned long long)n.load());                     \
+        __imp__##name(ctx, base);                                            \
+        if (::pr::g_trace_hooks && n.load() <= 4)                            \
+            ::pr::LogLine(::pr::LogCategory::kTrace,                         \
+                          "<< %s r3=%08X", #name, ctx.r3.u32);               \
+    }
+
+TRACE_HOOK_COLD(sub_82B84420)
+TRACE_HOOK_COLD(sub_82238E58)
+TRACE_HOOK_COLD(sub_82AF0A58)
+TRACE_HOOK_COLD(sub_823F5768)
+TRACE_HOOK_COLD(sub_8239D438)
+TRACE_HOOK_COLD(sub_82365288)
+TRACE_HOOK_COLD(sub_823F3BB8)
+TRACE_HOOK_COLD(sub_823F3C40)
+TRACE_HOOK_COLD(sub_823F3D88)
+TRACE_HOOK_COLD(sub_823F3ED8)
+TRACE_HOOK_COLD(sub_82239F58)
+TRACE_HOOK_COLD(sub_822509C8)
+TRACE_HOOK_COLD(sub_82267718)
+TRACE_HOOK_COLD(sub_82267C10)
+TRACE_HOOK_COLD(sub_8226E260)
+TRACE_HOOK_COLD(sub_82230B58)
+TRACE_HOOK_HOT(sub_82230DE0)
+TRACE_HOOK_HOT(sub_827E1E58)
+TRACE_HOOK_HOT(sub_827E1F80)
+TRACE_HOOK_COLD(sub_8226DD70)
+TRACE_HOOK_HOT(sub_8226DA40)
+TRACE_HOOK_HOT(sub_82807120)
+TRACE_HOOK_HOT(sub_8280C460)
+TRACE_HOOK_HOT(sub_827F9428)
+TRACE_HOOK_HOT(sub_82807710)
+TRACE_HOOK_HOT(sub_827F98F0)
+TRACE_HOOK_HOT(sub_82AD2D18)
+TRACE_HOOK_HOT(sub_822309C8)
+TRACE_HOOK_HOT(sub_82235C60)
+TRACE_HOOK_HOT(sub_82806900)
+TRACE_HOOK_HOT(sub_82807C30)
+TRACE_HOOK_HOT(sub_8280AD80)
+TRACE_HOOK_HOT(sub_82807668)
+TRACE_HOOK_HOT(sub_82806A08)
+TRACE_HOOK_HOT(sub_82267FB0)
 
 namespace pr {
 void TraceHooksInit() {

@@ -10,6 +10,57 @@
 
 using namespace pr;
 
+// ============================================================ request audit
+// Content-pipeline diagnostics: dedup by (op, guest path) with counters only
+// (disk-safe). The watchdog dumps a compact summary every 20 s; individual
+// missing paths additionally report once via LogLineOnce.
+struct FsReqStat {
+    uint64_t count = 0;
+    uint64_t ok = 0;
+    uint64_t fail = 0;
+};
+static std::mutex g_fs_req_mtx;
+static std::map<std::string, FsReqStat> g_fs_reqs;
+
+static void FsAudit(const char* op, const std::string& path, bool ok) {
+    std::lock_guard<std::mutex> lk(g_fs_req_mtx);
+    std::string key = std::string(op) + "|" + path;
+    auto& s = g_fs_reqs[key];
+    s.count++;
+    if (ok) s.ok++; else s.fail++;
+}
+
+namespace pr { void FsAuditDump() {
+    std::lock_guard<std::mutex> lk(g_fs_req_mtx);
+    if (g_fs_reqs.empty()) return;
+    uint64_t total = 0, fails = 0;
+    for (auto& [k, s] : g_fs_reqs) { total += s.count; fails += s.fail; }
+    LogLine(LogCategory::kFilesystem,
+            "FS audit: %zu unique requests, %llu ops, %llu failed",
+            g_fs_reqs.size(), (unsigned long long)total,
+            (unsigned long long)fails);
+    // Top 12 by count.
+    std::vector<std::pair<uint64_t, const std::string*>> by_count;
+    for (auto& [k, s] : g_fs_reqs) by_count.push_back({s.count, &k});
+    std::sort(by_count.begin(), by_count.end(),
+              [](auto& a, auto& b) { return a.first > b.first; });
+    for (size_t i = 0; i < by_count.size() && i < 12; i++) {
+        const std::string& k = *by_count[i].second;
+        auto& s = g_fs_reqs[k];
+        LogLine(LogCategory::kFilesystem,
+                "  FS top[%zu] %s  ok=%llu fail=%llu", i, k.c_str(),
+                (unsigned long long)s.ok, (unsigned long long)s.fail);
+    }
+    // First failed (missing) resources — the content-gap report.
+    for (auto& [k, s] : g_fs_reqs) {
+        if (s.fail && s.ok == 0) {
+            LogLine(LogCategory::kFilesystem,
+                    "  FS MISSING: %s (x%llu)", k.c_str(),
+                    (unsigned long long)s.fail);
+        }
+    }
+}
+}  // namespace pr
 
 #include "args.h"
 #define IMPORT(name) \
@@ -70,19 +121,24 @@ static std::string NormalizeGuestPath(uint32_t obj_attrs_ptr, bool unicode) {
     return raw;
 }
 
-// Resolve symbolic link prefixes (\??\D: etc).
+// Resolve symbolic link prefixes (\??\D:, GAME:\, ...). Xbox drive letters
+// are CASE-INSENSITIVE, so prefixes match lowercased.
 static std::string ApplySymbolicLinks(const std::string& raw) {
     std::string p = raw;
     // Strip \??\ prefix.
     if (p.rfind("\\??\\", 0) == 0) p = p.substr(4);
+    std::string p_low = p;
+    for (auto& c : p_low) if (c >= 'A' && c <= 'Z') c += 32;
     // Try full-prefix symbolic links, longest first.
     std::lock_guard<std::mutex> lk(K().symlink_mutex);
     std::map<size_t, std::string> matches;
     for (auto& [link, target] : K().symbolic_links) {
         std::string l = link;
-        // Symbolic links may be like "D:" or "\\??\\D:".
+        // Symbolic links may be like "D:" or "\??\D:".
         if (l.rfind("\\??\\", 0) == 0) l = l.substr(4);
-        if (p.rfind(l, 0) == 0) {
+        std::string l_low = l;
+        for (auto& c : l_low) if (c >= 'A' && c <= 'Z') c += 32;
+        if (p_low.rfind(l_low, 0) == 0) {
             matches[l.size()] = target + p.substr(l.size());
         }
     }
@@ -106,6 +162,52 @@ static bool MapToHost(const std::string& device_path, std::string* out) {
     std::replace(p.begin(), p.end(), '\\', '/');
     *out = K().fs_root.empty() ? "" : (K().fs_root + "/" + p);
     return !K().fs_root.empty() || p.empty();
+}
+
+// Xbox file systems (XGD/XGDF and the NT object namespace) are
+// CASE-INSENSITIVE. A host disc dump may not match the game's requested
+// casing exactly, so resolve component-by-component with a case-insensitive
+// directory scan when the direct stat() misses.
+static std::string ToLowerAscii(const std::string& s) {
+    std::string r = s;
+    for (auto& c : r) if (c >= 'A' && c <= 'Z') c += 32;
+    return r;
+}
+
+static bool ResolveHostPathCaseInsensitive(const std::string& host,
+                                            std::string* out) {
+    struct stat st {};
+    if (stat(host.c_str(), &st) == 0) { *out = host; return true; }
+    // Walk components from the root, matching case-insensitively.
+    size_t slash = host.find('/');
+    std::string cur = host.substr(0, slash == std::string::npos
+                                         ? host.size() : slash);
+    if (stat(cur.c_str(), &st) != 0) return false;
+    size_t pos = (slash == std::string::npos) ? host.size() : slash;
+    while (pos < host.size()) {
+        size_t next = host.find('/', pos + 1);
+        if (next == std::string::npos) next = host.size();
+        std::string comp = host.substr(pos + 1, next - pos - 1);
+        if (comp.empty()) { pos = next; continue; }
+        std::string want = ToLowerAscii(comp);
+        std::string found;
+        DIR* d = opendir(cur.c_str());
+        if (d) {
+            struct dirent* de;
+            while ((de = readdir(d))) {
+                if (ToLowerAscii(de->d_name) == want) {
+                    found = de->d_name;
+                    break;
+                }
+            }
+            closedir(d);
+        }
+        if (found.empty()) return false;   // component missing entirely
+        cur += "/" + found;
+        pos = next;
+    }
+    if (stat(cur.c_str(), &st) == 0) { *out = cur; return true; }
+    return false;
 }
 
 static uint32_t OpenHostFile(const std::string& host_path, bool write,
@@ -139,8 +241,11 @@ IMPORT(NtCreateFile) {
     std::string device_path = ApplySymbolicLinks(raw);
 
     PRLOG(Filesystem, "NtCreateFile('%s') disp=%u", raw.c_str(), create_disp);
+    FsAudit("create", device_path, false);   // updated below on success
 
     // Device opens (\Device\Cdrom0 or \Device\*) succeed as device objects.
+    // A trailing backslash (\Device\Cdrom0\ — the VOLUME ROOT) is NOT a
+    // device open; it falls through and opens fs_root as a directory.
     bool is_device = device_path.rfind("\\Device\\", 0) == 0 &&
                      device_path.find('\\', 8) == std::string::npos;
 
@@ -162,9 +267,19 @@ IMPORT(NtCreateFile) {
 
     std::string host;
     MapToHost(device_path, &host);
+    std::string resolved = host;
+    bool case_fixed = ResolveHostPathCaseInsensitive(host, &resolved);
+    if (case_fixed) host = resolved;
     bool is_dir = false, exists = false;
     int fd = OpenHostFile(host, (desired_access & 0xC0000000u) != 0, &is_dir,
                           &exists);
+    if (!exists) {
+        // Report the FIRST missing content resource once (the content-gap
+        // signal): rate-limited, never spammed.
+        LogLineOnce(LogCategory::kFilesystem,
+                    "CONTENT MISSING: '%s' (host '%s') — required by guest",
+                    device_path.c_str(), host.c_str());
+    }
     if (fd < 0 && !is_dir) {
         // create_disp: 1=CREATE_NEW, 2=CREATE_ALWAYS, 3=OPEN_EXISTING,
         // 4=OPEN_ALWAYS, 5=TRUNCATE_EXISTING
@@ -184,6 +299,7 @@ IMPORT(NtCreateFile) {
             RET(X_STATUS_NO_SUCH_FILE);
         }
     }
+    FsAudit("create", device_path, true);
 
     f->host_fd = fd;
     f->is_directory = is_dir;
@@ -228,16 +344,25 @@ IMPORT(NtOpenFile) {
 
     std::string host;
     MapToHost(device_path, &host);
+    std::string resolved = host;
+    if (ResolveHostPathCaseInsensitive(host, &resolved)) host = resolved;
     bool is_dir = false, exists = false;
     int fd = OpenHostFile(host, false, &is_dir, &exists);
+    if (!exists) {
+        LogLineOnce(LogCategory::kFilesystem,
+                    "CONTENT MISSING: '%s' (host '%s') — required by guest",
+                    device_path.c_str(), host.c_str());
+    }
     if (fd < 0 && !is_dir) {
         delete f;
         if (handle_ptr) StoreU32(handle_ptr, 0);
         if (io_status) StoreU32(io_status, X_STATUS_NO_SUCH_FILE);
         PRLOG(Filesystem, "NtOpenFile('%s') = NO_SUCH_FILE (host '%s')",
               device_path.c_str(), host.c_str());
+        FsAudit("open", device_path, false);
         RET(X_STATUS_NO_SUCH_FILE);
     }
+    FsAudit("open", device_path, true);
     f->host_fd = fd;
     f->is_directory = is_dir;
     f->fs_path = host;
@@ -483,22 +608,29 @@ IMPORT(NtQueryFullAttributesFile) {
     std::string device_path = ApplySymbolicLinks(raw);
     std::string host;
     MapToHost(device_path, &host);
+    std::string resolved = host;
+    bool ok = ResolveHostPathCaseInsensitive(host, &resolved);
+    if (ok) host = resolved;
+    FsAudit("stat", device_path, ok);
     struct stat st {};
-    if (K().fs_root.empty() || stat(host.c_str(), &st) != 0) {
+    if (!ok || K().fs_root.empty() || stat(host.c_str(), &st) != 0) {
+        LogLineOnce(LogCategory::kFilesystem,
+                    "CONTENT MISSING (stat): '%s' (host '%s')",
+                    device_path.c_str(), host.c_str());
         PRLOG(Filesystem, "NtQueryFullAttributesFile('%s') = NOT_FOUND",
               raw.c_str());
         RET(X_STATUS_NO_SUCH_FILE);
     }
-    // FILE_NETWORK_OPEN_INFORMATION (0x38 bytes):
-    // u64 creation, u64 last_access, u64 last_write, u64 change,
-    // u32 attrs, u64 alloc_sz, u64 eof
+    // FILE_NETWORK_OPEN_INFORMATION — Xbox 360 packed layout (0x34 bytes,
+    // Xenia xboxkrnl.h): creation/access/write/change (u64 each),
+    // allocation_size u64 @0x20, file_size u64 @0x28, attributes u32 @0x30.
     StoreU64(attrs + 0x00, (uint64_t)st.st_ctime * 10000000ull + 116444736000000000ull);
     StoreU64(attrs + 0x08, (uint64_t)st.st_atime * 10000000ull + 116444736000000000ull);
     StoreU64(attrs + 0x10, (uint64_t)st.st_mtime * 10000000ull + 116444736000000000ull);
     StoreU64(attrs + 0x18, (uint64_t)st.st_mtime * 10000000ull + 116444736000000000ull);
-    StoreU32(attrs + 0x20, S_ISDIR(st.st_mode) ? 0x10 : 0x20);
+    StoreU64(attrs + 0x20, ((uint64_t)st.st_size + 0xFFF) & ~0xFFFull);
     StoreU64(attrs + 0x28, (uint64_t)st.st_size);
-    StoreU64(attrs + 0x30, (uint64_t)st.st_size);
+    StoreU32(attrs + 0x30, S_ISDIR(st.st_mode) ? 0x10 : 0x20);
     PRLOG(Filesystem, "NtQueryFullAttributesFile('%s') ok size=%lld",
           raw.c_str(), (long long)st.st_size);
     RET(X_STATUS_SUCCESS);

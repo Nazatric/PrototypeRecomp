@@ -23,6 +23,12 @@ namespace pr {
 class GuestThread;
 struct KernelState;
 
+// Host monotonic ms (watchdog wait-duration display; defined in state.cpp).
+uint64_t WaitNowMsPub();
+
+// Filesystem request-audit summary (imports_fs.cpp; watchdog calls this).
+void FsAuditDump();
+
 // ---------------------------------------------------------------- memory
 // Simple region allocators over the 4 GiB guest space. Each region is a
 // bump allocator with a free list of blocks. Xbox semantics (reserve/commit,
@@ -207,6 +213,12 @@ public:
     // Suspension machinery.
     std::mutex suspend_mtx;
     std::condition_variable suspend_cv;
+
+    // Active/last wait (deadlock diagnosis; written by the wait imports,
+    // read by the watchdog). wait_obj = object handle or guest obj address.
+    std::atomic<uint32_t> wait_obj{0};
+    std::atomic<uint64_t> wait_start_ms{0};
+    std::atomic<uint32_t> wait_lr{0};
 
     // Held while the thread runs guest code.
     std::mutex state_mtx;

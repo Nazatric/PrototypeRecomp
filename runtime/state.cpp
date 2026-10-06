@@ -6,6 +6,7 @@
 #include <chrono>
 #include <fcntl.h>
 #include <mutex>
+#include <set>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -21,6 +22,12 @@ KernelState* g_kernel = nullptr;
 static GuestMemory* g_memory = nullptr;
 
 KernelState& K() { return *g_kernel; }
+
+// Host monotonic ms for watchdog wait-duration display.
+uint64_t WaitNowMsPub() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 // =============================================================== GuestMemory
 
@@ -782,9 +789,19 @@ void StartThreadWatchdog() {
                 const char* state = t->finished.load() ? "done"
                     : t->suspend_count.load() > 0 ? "suspended" : "running";
                 if (t->ctx) {
-                    PRLOG(Thread, "  tid=%-3u entry=%08X lr=%08X r1=%08X %s",
-                          t->thread_id, t->launch.entry,
-                          (uint32_t)t->ctx->lr, (uint32_t)t->ctx->r1.u32, state);
+                    uint32_t wob = t->wait_obj.load();
+                    if (wob) {
+                        uint64_t held = (WaitNowMsPub() - t->wait_start_ms.load()) / 1000;
+                        PRLOG(Thread, "  tid=%-3u entry=%08X lr=%08X r1=%08X %s "
+                              "WAIT obj=%08X since=%us at %08X",
+                              t->thread_id, t->launch.entry,
+                              (uint32_t)t->ctx->lr, (uint32_t)t->ctx->r1.u32, state,
+                              wob, (unsigned)held, t->wait_lr.load());
+                    } else {
+                        PRLOG(Thread, "  tid=%-3u entry=%08X lr=%08X r1=%08X %s",
+                              t->thread_id, t->launch.entry,
+                              (uint32_t)t->ctx->lr, (uint32_t)t->ctx->r1.u32, state);
+                    }
                 }
             }
             // Deep-dive the main thread + job globals every 4th dump.
@@ -792,25 +809,28 @@ void StartThreadWatchdog() {
             if (++dump_n % 4 == 1 && K().main_thread && K().main_thread->ctx) {
                 DumpGuestStackChain(K().main_thread, 24);
                 DumpStackRetAddrs(K().main_thread, 40);
-                // Also dump the first generic worker's wait chain.
-                for (auto* t : K().threads) {
-                    if (t != K().main_thread && t->ctx && !t->finished.load() &&
-                        t->launch.entry == 0x82236A90) {
-                        DumpStackRetAddrs(t, 14);
-                        break;
-                    }
-                }
-                // Dump the GPU pusher thread (tid with entry via 0x82236A90
-                // whose real entry is sub_822646E8, obj 0x82D83A90).
-                for (auto* t : K().threads) {
-                    if (t->ctx && !t->finished.load() &&
-                        t->launch.arg == 0x82D83A90) {
+                // Dump one stack per DISTINCT thread entry (first live thread
+                // of each kind) — covers render/queue/subsystem threads.
+                // Job-worker tramp threads (entry 0x82236A90) are dumped ONLY
+                // when not parked in the pool wait (lr != 82A5E9A0), so the
+                // render thread and queue thread still get their stacks.
+                {
+                    std::set<uint32_t> seen_entries;
+                    for (auto* t : K().threads) {
+                        if (t == K().main_thread || !t->ctx || t->finished.load())
+                            continue;
+                        if (t->launch.entry == 0x82236A90 &&
+                            (uint32_t)t->ctx->lr == 0x82A5E9A0)
+                            continue;   // parked pool worker — known idle
+                        if (!seen_entries.insert(t->launch.entry).second &&
+                            t->launch.entry != 0x82236A90)
+                            continue;
                         DumpStackRetAddrs(t, 16);
-                        break;
                     }
                 }
                 DumpJobSystemGlobals();
                 DumpSemaphoreCounts();
+                FsAuditDump();   // content-pipeline request summary
                 // Known ATG thread objects: DriveThread (thread arg of tid=8),
                 // the IO thread object, first pool worker.
                 DumpATGThreadObject(LoadU32(0xA19AEEB8 + 12) == 0 ? 0 : 0xA19AEEA0, "drivethread");
