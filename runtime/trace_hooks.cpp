@@ -74,6 +74,40 @@ void __imp__sub_827E1E58(PPCContext&, uint8_t*);
 void __imp__sub_827E1F80(PPCContext&, uint8_t*);
 // Display-subsystem init chain (tid26 = sub_8226DD70 entry): where does the
 // display init stall? All hooked HOT (they may sit in spin loops).
+
+// ATG worker state machine (sub_827E7420 sets, sub_827E70A0 gets).
+void __imp__sub_827E7420(PPCContext&, uint8_t*);
+void __imp__sub_827E70A0(PPCContext&, uint8_t*);
+void __imp__sub_827E55E0(PPCContext&, uint8_t*);
+void __imp__sub_827E5420(PPCContext&, uint8_t*);
+void __imp__sub_82861B78(PPCContext&, uint8_t*);
+void __imp__sub_82861D78(PPCContext&, uint8_t*);
+void __imp__sub_82844850(PPCContext&, uint8_t*);
+void __imp__sub_82A8E7A0(PPCContext&, uint8_t*);
+
+// RCF archive mount chain (Phase 2D content-pipeline investigation):
+// vtable method 8239EF58 -> 8239D908 -> 82A58CA8(8, paths[5], 5) ->
+// per-file 82A58B80(8, path) -> 82A588C8 / 82A56CC8.
+void __imp__sub_8239EF58(PPCContext&, uint8_t*);
+void __imp__sub_8239D908(PPCContext&, uint8_t*);
+void __imp__sub_8227C0B0(PPCContext&, uint8_t*);
+void __imp__sub_82A58CA8(PPCContext&, uint8_t*);
+void __imp__sub_82A58B80(PPCContext&, uint8_t*);
+void __imp__sub_82A56CC8(PPCContext&, uint8_t*);
+void __imp__sub_82A588C8(PPCContext&, uint8_t*);
+void __imp__sub_823CE4A8(PPCContext&, uint8_t*);
+void __imp__sub_82A54028(PPCContext&, uint8_t*);
+void __imp__sub_8232C6B8(PPCContext&, uint8_t*);
+// ATG thread-framework: work submit (KeSetEvent(param+32)) + dispatcher.
+void __imp__sub_82A87608(PPCContext&, uint8_t*);
+void __imp__sub_82A87810(PPCContext&, uint8_t*);
+void __imp__sub_82A880D0(PPCContext&, uint8_t*);
+void __imp__sub_82A69E70(PPCContext&, uint8_t*);
+void __imp__sub_82A69E78(PPCContext&, uint8_t*);
+void __imp__sub_82A876B0(PPCContext&, uint8_t*);
+void __imp__sub_82A874C0(PPCContext&, uint8_t*);
+void __imp__sub_82A87460(PPCContext&, uint8_t*);
+void __imp__sub_8239D138(PPCContext&, uint8_t*);
 void __imp__sub_8226DD70(PPCContext&, uint8_t*);
 void __imp__sub_8226DA40(PPCContext&, uint8_t*);
 void __imp__sub_82807120(PPCContext&, uint8_t*);
@@ -261,6 +295,35 @@ TRACE_HOOK_HOT(sub_8280AD80)
 TRACE_HOOK_HOT(sub_82807668)
 TRACE_HOOK_HOT(sub_82806A08)
 TRACE_HOOK_HOT(sub_82267FB0)
+
+// RCF mount chain (gated by 8227C0B0 + 82267FB0 results).
+TRACE_HOOK_ARGS(sub_827E7420, "r3=%08X r4=%08X r5=%08X")
+TRACE_HOOK_COLD(sub_827E70A0)
+TRACE_HOOK_COLD(sub_827E55E0)
+TRACE_HOOK_COLD(sub_827E5420)
+TRACE_HOOK_COLD(sub_82861B78)
+TRACE_HOOK_COLD(sub_82861D78)
+TRACE_HOOK_COLD(sub_82844850)
+TRACE_HOOK_COLD(sub_82A8E7A0)
+TRACE_HOOK_COLD(sub_8239EF58)
+TRACE_HOOK_COLD(sub_8239D908)
+TRACE_HOOK_COLD(sub_8227C0B0)
+TRACE_HOOK_COLD(sub_82A58CA8)
+TRACE_HOOK_COLD(sub_82A58B80)
+TRACE_HOOK_COLD(sub_82A56CC8)
+TRACE_HOOK_COLD(sub_82A588C8)
+TRACE_HOOK_COLD(sub_823CE4A8)
+TRACE_HOOK_COLD(sub_82A54028)
+TRACE_HOOK_COLD(sub_8232C6B8)
+TRACE_HOOK_COLD(sub_82A87608)
+TRACE_HOOK_COLD(sub_82A87810)
+TRACE_HOOK_COLD(sub_82A880D0)
+TRACE_HOOK_COLD(sub_82A69E70)
+TRACE_HOOK_COLD(sub_82A69E78)
+TRACE_HOOK_COLD(sub_82A876B0)
+TRACE_HOOK_COLD(sub_82A874C0)
+TRACE_HOOK_COLD(sub_82A87460)
+TRACE_HOOK_COLD(sub_8239D138)
 
 namespace pr {
 void TraceHooksInit() {

@@ -689,6 +689,10 @@ IMPORT(NtQueryDirectoryFile) {
     uint32_t restart = ARG(10);
 
     GuestFile* f = LookupFile(handle);
+    PRLOGONCE(Filesystem, "NtQueryDirectoryFile: handle=%08X class=%u single=%u restart=%u fs_path=%s%s",
+              handle, file_info_class, single, restart,
+              f ? f->fs_path.c_str() : "(none)",
+              f && f->is_directory ? "" : " NOT-DIR");
     if (!f || !f->is_directory) {
         CompleteIO(io_status, X_STATUS_INVALID_HANDLE, 0);
         RET(X_STATUS_INVALID_HANDLE);
@@ -739,6 +743,13 @@ IMPORT(NtQueryDirectoryFile) {
             }
         }
         std::string host = f->fs_path + "/" + name;
+        {
+            static std::set<std::string> seen;
+            if (seen.insert(f->fs_path + "|" + name + (pattern.empty() ? "" : "|pat:" + pattern)).second) {
+                PRLOG(Filesystem, "DIR-ENTRY: %s -> %s%s", f->fs_path.c_str(), name.c_str(),
+                      pattern.empty() ? "" : (" (pattern " + pattern + ")").c_str());
+            }
+        }
         FillDirEntry(file_info, length, name, host, (uint32_t)f->dir_index, 0);
         CompleteIO(io_status, X_STATUS_SUCCESS, length);
         RET(X_STATUS_SUCCESS);

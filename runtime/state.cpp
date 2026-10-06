@@ -13,7 +13,7 @@
 // Generated function mapping table (global scope, from ppc_func_mapping.cpp).
 extern PPCFuncMapping PPCFuncMappings[];
 
-namespace pr {
+namespace pr { void CsStateDump();
 
 extern "C" void* pr_guest_base_for_crash_c() { return g_guest_base; }
 
@@ -672,8 +672,49 @@ static void DumpSemaphoreCounts() {
 // and the read-pointer writeback (see VdInitializeRingBuffer / sub_82A7A2C0).
 static void DumpGpuRingState() {
     uint32_t dev = K().vd_interrupt_callback_arg;
-    if (!dev) dev = 0xA64B0080;   // fallback: previously observed device
+    if (!dev) dev = 0xA64B0088;   // fallback: previously observed device
     PRLOG(Thread, "  GPU ring: dev=%08X", dev);
+    // ATG worker-trampoline device-servicing gates (Phase 2D):
+    //   [0x820006F4]/[0x820006F8] = device pointer per process type
+    //   [dev+0x2ABE] = device service flags (trampoline tests before
+    //                  calling sub_82A69E70)
+    PRLOG(Thread, "    atg: devptr[6F4]=%08X devptr[6F8]=%08X flags[2ABE]=%02X "
+          "framecb[16544]=%08X swapQ[cur@16700=%08X tgt@16704=%08X]",
+          LoadU32(0x820006F4), LoadU32(0x820006F8), LoadU8(dev + 0x2ABE),
+          LoadU32(dev + 16544), LoadU32(dev + 16700), LoadU32(dev + 16704));
+    // Boot handshake state (Phase 2D):
+    //   [0x82D844F8] = display-init-done flag (set by sub_8226DA40 tail)
+    //   [0x82DC99C8] = the global task queue object; its ring is at
+    //                  [queue+0x2C] = {head, tail, base, end} (32-bit slots)
+    {
+        uint32_t dispflag = LoadU32(0x82D844F8);
+        uint32_t queue = LoadU32(0x82DC99C8);
+        PRLOG(Thread, "    boot: dispflag[82D844F8]=%08X queue[82DC99C8]=%08X",
+              dispflag, queue);
+        if (queue >= 0x82000000 && queue < 0xC0000000) {
+            uint32_t ring = LoadU32(queue + 0x2C);
+            if (ring >= 0x82000000 && ring < 0xC0000000) {
+                uint32_t head = LoadU32(ring), tail = LoadU32(ring + 4);
+                uint32_t rbase = LoadU32(ring + 8), rend = LoadU32(ring + 12);
+                uint32_t cnt = (head <= tail) ? ((tail - head) >> 2)
+                                              : (uint32_t)(((int64_t)tail - (int64_t)rbase
+                                                            + ((int64_t)rend - (int64_t)head)) >> 2);
+                PRLOG(Thread, "         ring@%08X head=%08X tail=%08X base=%08X "
+                      "end=%08X count~=%u first=%08X",
+                      ring, head, tail, rbase, rend, cnt,
+                      head != tail ? LoadU32(head) : 0);
+            } else {
+                PRLOG(Thread, "         queue+2C=%08X (no ring)", ring);
+            }
+            // Worker-state fields used by the display-init handshake
+            // (sub_8226D820 pumps until sub_827E70A0(worker) == 3).
+            PRLOG(Thread, "         queue fields: +10=%08X +14=%08X +18=%08X "
+                  "+1C=%08X +28=%08X +2C=%08X",
+                  LoadU32(queue + 0x10), LoadU32(queue + 0x14),
+                  LoadU32(queue + 0x18), LoadU32(queue + 0x1C),
+                  LoadU32(queue + 0x28), LoadU32(queue + 0x2C));
+        }
+    }
     uint32_t mirror_ptr = LoadU32(dev + 10896);
     PRLOG(Thread, "    dev+10896(mirror ptr)=%08X *mirror=%08X dev+10908(wptr)=%08X "
           "dev+10956(cursor)=%08X dev+13232=%08X", mirror_ptr,
@@ -810,6 +851,14 @@ void StartThreadWatchdog() {
             // Deep-dive the main thread + job globals every 4th dump.
             static int dump_n = 0;
             if (++dump_n % 4 == 1 && K().main_thread && K().main_thread->ctx) {
+                // Dormant-register snapshot: what queue/ring is the main
+                // thread's drain actually operating on?
+                PRLOG(Thread, "  main regs: r30(queue)=%08X r29(cs)=%08X "
+                      "r31=%08X r28=%08X",
+                      (uint32_t)K().main_thread->ctx->r30.u32,
+                      (uint32_t)K().main_thread->ctx->r29.u32,
+                      (uint32_t)K().main_thread->ctx->r31.u32,
+                      (uint32_t)K().main_thread->ctx->r28.u32);
                 DumpGuestStackChain(K().main_thread, 24);
                 DumpStackRetAddrs(K().main_thread, 40);
                 // Dump one stack per DISTINCT thread entry (first live thread
@@ -834,6 +883,7 @@ void StartThreadWatchdog() {
                 DumpJobSystemGlobals();
                 DumpSemaphoreCounts();
                 FsAuditDump();   // content-pipeline request summary
+                CsStateDump();   // critical-section owners/waiters
                 // Known ATG thread objects: DriveThread (thread arg of tid=8),
                 // the IO thread object, first pool worker.
                 DumpATGThreadObject(LoadU32(0xA19AEEB8 + 12) == 0 ? 0 : 0xA19AEEA0, "drivethread");

@@ -257,6 +257,10 @@ static void SpawnGuestThread(PPCContext& ctx, uint32_t handle_ptr,
         if (handle_ptr) StoreU32(handle_ptr, 0);
         RET(X_STATUS_NO_MEMORY);
     }
+    if (start_address == 0x82236A90 || start_address == 0x82A883E8) {
+        PRLOG(Thread, "  -> spawned tid=%u (start=%08X)", t->thread_id,
+              start_address);
+    }
     t->host = std::thread([t]() { t->Run(); });
     t->host.detach();
     if (creation_flags & kCreateFlag0x80) {
@@ -635,6 +639,28 @@ static bool ObjectSignaled(KernelObject* obj) {
     return false;
 }
 
+// Xbox 360 LARGE_INTEGER timeout semantics:
+//   negative -> relative duration in 100ns units
+//   positive -> absolute FILETIME (100ns since 1601)
+//   0        -> expire immediately
+// Returns the relative duration in NANOseconds, negative = already expired.
+static int64_t TimeoutToRelativeNanos(uint64_t timeout_100ns) {
+    if (timeout_100ns == 0) return -1;              // already expired
+    int64_t tv = (int64_t)timeout_100ns;
+    if (tv < 0) {
+        return tv * 100;                             // relative (negative ns)
+    }
+    // absolute FILETIME: remaining = abs - now_filetime
+    using namespace std::chrono;
+    auto now_ns = duration_cast<nanoseconds>(
+                      system_clock::now().time_since_epoch()).count();
+    const int64_t kEpochDiff100ns = 116444736000000000LL;  // 1970-1601 in 100ns
+    int64_t now_100ns = now_ns / 100 + kEpochDiff100ns;
+    int64_t remaining_100ns = tv - now_100ns;
+    if (remaining_100ns <= 0) return -1;             // expired
+    return remaining_100ns * 100;
+}
+
 static int WaitSingleObjectKernel(KernelObject* obj, uint64_t timeout_100ns,
                                   bool have_timeout) {
     using namespace std::chrono;
@@ -642,11 +668,13 @@ static int WaitSingleObjectKernel(KernelObject* obj, uint64_t timeout_100ns,
         if (t->finished.load()) return 0;
         // Thread wait: poll with small sleeps (host join may deadlock the
         // object-table design); 5ms quantum.
+        int64_t rel_ns0 = have_timeout ? TimeoutToRelativeNanos(timeout_100ns)
+                                       : INT64_MIN;
         steady_clock::time_point deadline =
-            steady_clock::now() + nanoseconds(timeout_100ns / 100);
+            steady_clock::now() + nanoseconds(rel_ns0 > 0 ? rel_ns0 : 0);
         while (!t->finished.load()) {
             if (have_timeout && timeout_100ns != 0xFFFFFFFFFFFFFFFFull) {
-                if (timeout_100ns == 0) return 0x102;  // TIMEOUT
+                if (rel_ns0 < 0) return 0x102;  // TIMEOUT (zero/expired abs)
                 if (steady_clock::now() >= deadline) return 0x102;
             }
             std::this_thread::sleep_for(milliseconds(5));
@@ -658,7 +686,9 @@ static int WaitSingleObjectKernel(KernelObject* obj, uint64_t timeout_100ns,
         if (!ev->signaled) {
             if (have_timeout && timeout_100ns == 0) return 0x102;
             if (have_timeout && timeout_100ns != 0xFFFFFFFFFFFFFFFFull) {
-                if (ev->cv.wait_for(lk, nanoseconds(timeout_100ns / 100),
+                int64_t rel_ns = TimeoutToRelativeNanos(timeout_100ns);
+                if (rel_ns < 0) return 0x102;
+                if (ev->cv.wait_for(lk, nanoseconds(rel_ns),
                                     [&] { return ev->signaled; }))
                     goto acquired_ev;
                 return 0x102;
@@ -677,7 +707,9 @@ static int WaitSingleObjectKernel(KernelObject* obj, uint64_t timeout_100ns,
         if (sem->count <= 0) {
             if (have_timeout && timeout_100ns == 0) return 0x102;
             if (have_timeout && timeout_100ns != 0xFFFFFFFFFFFFFFFFull) {
-                if (sem->cv.wait_for(lk, nanoseconds(timeout_100ns / 100),
+                int64_t rel_ns = TimeoutToRelativeNanos(timeout_100ns);
+                if (rel_ns < 0) return 0x102;
+                if (sem->cv.wait_for(lk, nanoseconds(rel_ns),
                                      [&] { return sem->count > 0; }))
                     goto acquired_sem;
                 return 0x102;
@@ -695,7 +727,9 @@ static int WaitSingleObjectKernel(KernelObject* obj, uint64_t timeout_100ns,
         if (mut->owner != 0 && cur && mut->owner != cur->kthread) {
             if (have_timeout && timeout_100ns == 0) return 0x102;
             if (have_timeout && timeout_100ns != 0xFFFFFFFFFFFFFFFFull) {
-                if (mut->cv.wait_for(lk, nanoseconds(timeout_100ns / 100),
+                int64_t rel_ns = TimeoutToRelativeNanos(timeout_100ns);
+                if (rel_ns < 0) return 0x102;
+                if (mut->cv.wait_for(lk, nanoseconds(rel_ns),
                                      [&] { return mut->owner == 0; }))
                     goto acquired_mut;
                 return 0x102;
@@ -752,6 +786,9 @@ IMPORT(KeWaitForSingleObject) {
                         obj_ptr, hdr_type, (uint32_t)ctx.lr,
                         GuestThread::GetCurrent()
                             ? GuestThread::GetCurrent()->thread_id : 0);
+            LogLineOnce(LogCategory::kWarn,
+                        "  wait args: timeout_ptr=%08X timeout=%016llX have_timeout=%d",
+                        timeout_ptr, (unsigned long long)timeout, (int)have_timeout);
         }
         if (hdr_type > 8) {
             // Not a plausible dispatch header: refuse.
@@ -825,7 +862,8 @@ IMPORT(NtWaitForMultipleObjectsEx) {
     }
     using namespace std::chrono;
     steady_clock::time_point deadline =
-        steady_clock::now() + nanoseconds(have_timeout ? (int64_t)(timeout / 100) : -1);
+        steady_clock::now() +
+        nanoseconds(have_timeout ? TimeoutToRelativeNanos(timeout) : (int64_t)-1);
 
     if (wait_type == 0) {
         // Wait all: poll loop (rare in games).
@@ -909,16 +947,33 @@ IMPORT(KeWaitForMultipleObjects) {
 }
 
 IMPORT(KeDelayExecutionThread) {
-    // (alertable, interval_ptr) — r3=alertable r4=PLARGE_INTEGER interval
-    uint32_t alertable = ARG(0);
-    uint32_t interval_ptr = ARG(1);
+    // (KPROCESSOR_MODE WaitMode, BOOLEAN Alertable, PLARGE_INTEGER Interval)
+    // r3 = wait mode (0=Kernel,1=User), r4 = alertable, r5 = interval ptr.
+    // NOTE: the interval is the THIRD argument — reading it from r4 made
+    // every delay a no-op (the game's task queues spun at full speed).
+    uint32_t wait_mode = ARG(0);
+    uint32_t alertable = ARG(1);
+    uint32_t interval_ptr = ARG(2);
+    (void)wait_mode; (void)alertable;
+    {
+        static std::atomic<uint64_t> n{0};
+        uint64_t k = n.fetch_add(1);
+        if (k < 8 || (k & 0xFFFFF) == 0) {
+            uint64_t iv = interval_ptr ? LoadU64(interval_ptr) : 0;
+            PRLOG(Thread, "[delay] #%llu mode=%u alert=%u ptr=%08X iv=%016llX "
+                  "lr=%08X tid=%u",
+                  (unsigned long long)k, wait_mode, alertable, interval_ptr,
+                  (unsigned long long)iv, (uint32_t)ctx.lr,
+                  GuestThread::GetCurrent() ? GuestThread::GetCurrent()->thread_id : 0);
+        }
+    }
     if (interval_ptr) {
         uint64_t interval = LoadU64(interval_ptr);
         // Negative = relative (100ns units). Positive = absolute.
         int64_t rel = (int64_t)interval;
         if (rel < 0) {
-            rel = -rel;
-            auto ns = std::chrono::nanoseconds(rel / 100);
+            // Relative: |rel| is in 100ns units -> nanoseconds = |rel| * 100.
+            auto ns = std::chrono::nanoseconds((int64_t)(~rel + 1) * 100);
             std::this_thread::sleep_for(ns);
         } else if (rel > 0) {
             // Absolute FILETIME.
@@ -926,7 +981,7 @@ IMPORT(KeDelayExecutionThread) {
                            116444736000000000ull;
             if (rel > now) {
                 std::this_thread::sleep_for(
-                    std::chrono::nanoseconds((rel - now) / 100));
+                    std::chrono::nanoseconds((rel - now) * 100));
             }
         }
     }
@@ -957,6 +1012,24 @@ static GuestCS* GetCS(uint32_t cs_ptr) {
     auto it = g_cs_map.find(cs_ptr);
     return it == g_cs_map.end() ? nullptr : it->second;
 }
+
+// Watchdog hook: dump all critical-section states (Phase 2D deadlock
+// diagnosis). Owner values are guest KTHREAD pointers.
+namespace pr { void CsStateDump() {
+    std::lock_guard<std::mutex> lk(g_cs_map_mutex);
+    for (auto& kv : g_cs_map) {
+        GuestCS* cs = kv.second;
+        std::lock_guard<std::mutex> lk2(cs->mtx);
+        if (cs->owner == 0 && cs->waiters.empty()) continue;  // idle
+        PRLOG(Thread, "    CS %08X: owner=%08X recursion=%d waiters=%zu [%s]",
+              kv.first, cs->owner, cs->recursion, cs->waiters.size(),
+              [&] { std::string s; for (auto w : cs->waiters)
+                        s += (s.empty() ? "" : ",") + ([](uint32_t v) {
+                            char b[16]; snprintf(b, sizeof b, "%08X", v);
+                            return std::string(b); })(w);
+                    return s; }().c_str());
+    }
+} }  // namespace pr
 
 static GuestCS* MakeCS(uint32_t cs_ptr) {
     std::lock_guard<std::mutex> lk(g_cs_map_mutex);
@@ -993,6 +1066,14 @@ IMPORT(RtlEnterCriticalSection) {
     GuestThread* cur = GuestThread::GetCurrent();
     uint32_t cur_kthread = cur ? cur->kthread : 0;
     GuestCS* cs = MakeCS(cs_ptr);
+    const bool kTraceThisCS = (cs_ptr == 0x82DC98E8);
+    if (kTraceThisCS) {
+        PRLOG(Thread, "[cs-trace] ENTER %08X by kt=%08X (tid=%u) lr=%08X: "
+              "owner=%08X rec=%d waiters=%zu",
+              cs_ptr, cur_kthread, cur ? cur->thread_id : 0, (uint32_t)ctx.lr,
+              cs->owner, cs->recursion, [&] { std::lock_guard<std::mutex>
+              l(cs->mtx); return cs->waiters.size(); }());
+    }
     {
         std::unique_lock<std::mutex> lk(cs->mtx);
         if (cs->owner == cur_kthread && cur_kthread != 0) {
@@ -1031,6 +1112,10 @@ IMPORT(RtlEnterCriticalSection) {
         cs->owner = cur_kthread;
         cs->recursion = 1;
     }
+    if (kTraceThisCS) {
+        PRLOG(Thread, "[cs-trace] ENTER-ACQUIRED %08X by kt=%08X (tid=%u)",
+              cs_ptr, cur_kthread, cur ? cur->thread_id : 0);
+    }
     StoreU32(cs_ptr + 0x08, 0);
     StoreU32(cs_ptr + 0x0C, 1);
     StoreU32(cs_ptr + 0x10, cur_kthread);
@@ -1066,6 +1151,10 @@ IMPORT(RtlLeaveCriticalSection) {
     uint32_t cur_kthread = cur ? cur->kthread : 0;
     GuestCS* cs = GetCS(cs_ptr);
     if (!cs) { PRLOGW("RtlLeaveCriticalSection on uninit CS %08X", cs_ptr); return; }
+    if (cs_ptr == 0x82DC98E8) {
+        PRLOG(Thread, "[cs-trace] LEAVE %08X by kt=%08X (tid=%u) lr=%08X",
+              cs_ptr, cur_kthread, cur ? cur->thread_id : 0, (uint32_t)ctx.lr);
+    }
     {
         std::lock_guard<std::mutex> lk(cs->mtx);
         if (cs->owner != cur_kthread) {
