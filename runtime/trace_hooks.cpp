@@ -30,6 +30,7 @@ void __imp__sub_82A533A0(PPCContext&, uint8_t*);
 void __imp__sub_82A5B9F0(PPCContext&, uint8_t*);
 // Job-system / worker-creation chain (Phase 2B job-system investigation).
 void __imp__sub_82ADDD88(PPCContext&, uint8_t*);
+void __imp__sub_82ADDE88(PPCContext&, uint8_t*);
 void __imp__sub_82ADDD18(PPCContext&, uint8_t*);
 void __imp__sub_82AE5760(PPCContext&, uint8_t*);
 void __imp__sub_82AE5630(PPCContext&, uint8_t*);
@@ -189,7 +190,51 @@ TRACE_HOOK(sub_82A5B9F0)
                           ctx.r3.u32);                                      \
     }
 
-TRACE_HOOK_NAME(sub_82ADDD88)
+// Custom: GetModule internals — r4 points at the 16-byte name buffer whose
+// first char is the module tag; dump it so the requested module name is
+// visible. Also hook the public entry sub_82ADDE88(r3=name char*).
+void sub_82ADDD88(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        char nbuf[24] = {0};
+        uint32_t p = ctx.r4.u32;
+        if (p >= 0x82000000 && p < 0xC0000000) {
+            for (int i = 0; i < 15; i++) {
+                uint8_t c = *(uint8_t*)(::pr::g_guest_base + (uint64_t)(p + i));
+                nbuf[i] = (char)c;
+                if (!c) break;
+            }
+        }
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82ADDD88[GET-MODULE](req=%08X name='%s' r5=%08X r6=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, nbuf, ctx.r5.u32, ctx.r6.u32,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82ADDD88(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_82ADDD88 r3=%08X", ctx.r3.u32);
+}
+void sub_82ADDE88(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        char nbuf[24] = {0};
+        uint32_t p = ctx.r3.u32;
+        if (p >= 0x82000000 && p < 0xC0000000) {
+            for (int i = 0; i < 15; i++) {
+                uint8_t c = *(uint8_t*)(::pr::g_guest_base + (uint64_t)(p + i));
+                nbuf[i] = (char)c;
+                if (!c) break;
+            }
+        }
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82ADDE88[MODULE-ENTRY](name='%s' r4=%08X) [lr=%08X tid=%u]",
+                      nbuf, ctx.r4.u32,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82ADDE88(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_82ADDE88 r3=%08X", ctx.r3.u32);
+}
 void sub_82ADDD18(PPCContext& ctx, uint8_t* base) {
     static std::atomic<uint64_t> n{0};
     uint64_t idx = n.fetch_add(1);
@@ -375,6 +420,93 @@ TRACE_HOOK_COLD(sub_82A874C0)
 TRACE_HOOK_COLD(sub_82A87460)
 TRACE_HOOK_COLD(sub_8239D138)
 
+// ---- cement-library init chain (Phase 2E archive-manager blocker) ----
+// sub_82A5AA28 = 'ATEM' chunk handler (the manifest chunk inside
+// cementfiles.p3d) -> ... -> 82A5AE38: bl sub_82A5A920 (cement global init,
+// writes 0x82DCF574 struct, creates the cement thread at 0x82A6A558).
+// If these never fire, the cement library never initializes, [g+0xB4] stays
+// NULL and sub_82A58B80 archive registration silently no-ops.
+extern "C" {
+void __imp__sub_82A5AA28(PPCContext&, uint8_t*);
+void __imp__sub_82A5A920(PPCContext&, uint8_t*);
+void __imp__sub_82A52FF8(PPCContext&, uint8_t*);
+void __imp__sub_82A53738(PPCContext&, uint8_t*);
+void __imp__sub_82A55448(PPCContext&, uint8_t*);
+void __imp__sub_82A66718(PPCContext&, uint8_t*);
+void __imp__sub_82A66BF8(PPCContext&, uint8_t*);
+void __imp__sub_82A65918(PPCContext&, uint8_t*);
+void __imp__sub_82331270(PPCContext&, uint8_t*);
+void __imp__sub_828D2558(PPCContext&, uint8_t*);
+void __imp__sub_828D2720(PPCContext&, uint8_t*);
+void __imp__sub_828D2FD0(PPCContext&, uint8_t*);
+void __imp__sub_828D2C88(PPCContext&, uint8_t*);
+void __imp__sub_828D2E24(PPCContext&, uint8_t*);
+void __imp__sub_828D31A8(PPCContext&, uint8_t*);
+void __imp__sub_828D1730(PPCContext&, uint8_t*);
+}
+TRACE_HOOK_COLD(sub_82A5AA28)
+TRACE_HOOK_COLD(sub_82A5A920)
+TRACE_HOOK_COLD(sub_82A52FF8)
+TRACE_HOOK_COLD(sub_82A53738)
+TRACE_HOOK_COLD(sub_82A55448)
+TRACE_HOOK_COLD(sub_82A66718)
+TRACE_HOOK_COLD(sub_82A66BF8)
+TRACE_HOOK_COLD(sub_82A65918)
+
+TRACE_HOOK_COLD(sub_82331270)
+void sub_828D2720(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        uint32_t obj = ctx.r3.u32, key = ctx.r4.u32;
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D2720[FIND](obj=%08X key=%08X) obj18=%08X obj0=%08X vt=%08X [lr=%08X tid=%u]",
+                      obj, key,
+                      (obj >= 0x82000000 && obj < 0xC0000000) ? L(obj + 0x18) : 0,
+                      (obj >= 0x82000000 && obj < 0xC0000000) ? L(obj) : 0,
+                      (obj >= 0x82000000 && obj < 0xC0000000 && L(obj) >= 0x82000000 && L(obj) < 0xC0000000) ? L(L(obj) + 8) : 0,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828D2720(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D2720 r3=%08X", ctx.r3.u32);
+}
+void sub_828D2FD0(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D2FD0[FALLBACK](key=%08X path=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    __imp__sub_828D2FD0(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D2FD0 r3=%08X", ctx.r3.u32);
+}
+void sub_828D2C88(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D2C88[ARCH-CTOR](r3=%08X r4=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    __imp__sub_828D2C88(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D2C88 r3=%08X", ctx.r3.u32);
+}
+void sub_828D1730(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        uint32_t tbl = ctx.r3.u32, key = ctx.r4.u32;
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D1730[BUCKET](tbl=%08X key=%08X) tbl0=%08X key0=%08X key4=%08X",
+                      tbl, key,
+                      (tbl >= 0x82000000 && tbl < 0xC0000000) ? L(tbl) : 0,
+                      (key >= 0x82000000 && key < 0xC0000000) ? L(key) : 0,
+                      (key >= 0x82000000 && key < 0xC0000000) ? L(key + 4) : 0);
+    }
+    __imp__sub_828D1730(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D1730 r3=%08X", ctx.r3.u32);
+}
+
 // ---- .rz decompression chain (Phase 2E frontend-asset loading) ----
 // The content loader pumps decompress tasks via sub_827F2798 -> sub_827F3680
 // (ring-buffer LZ decompressor) and read pumps via sub_827F5900 -> sub_82A37000
@@ -532,12 +664,21 @@ void sub_828D2D60(PPCContext& ctx, uint8_t* base) {
         uint32_t arch = ctx.r3.u32;
         auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
         uint32_t reg = (arch >= 0x82000000 && arch < 0xC0000000) ? L(arch + 4) : 0xDEAD;
+        // The global cement-library archive list at 0x82D35D68 (queried via
+        // vtable+4 by the load-on-miss path sub_828E6D88).
+        uint32_t glist = L(0x82D35D68);
+        uint32_t glist_vt = (glist >= 0x82000000 && glist < 0xC0000000) ? L(glist) : 0;
+        // The registry's hash-table object [reg+0x20] and its table root
+        // [+0x18] (0 = empty; find fails instantly).
+        uint32_t reg20 = (reg >= 0x82000000 && reg < 0xC0000000) ? L(reg + 0x20) : 0;
+        uint32_t reg20_18 = (reg20 >= 0x82000000 && reg20 < 0xC0000000) ? L(reg20 + 0x18) : 0;
         ::pr::LogLine(::pr::LogCategory::kTrace,
                       ">> sub_828D2D60(archive=%08X path=%08X '%s' r5=%08X r6=%08X) reg=[arch+4]=%08X "
-                      "archf0=%08X archf8=%08X [lr=%08X tid=%u]",
+                      "archf0=%08X archf8=%08X glist=%08X(gvt=%08X) reg20=%08X tbl18=%08X [lr=%08X tid=%u]",
                       arch, ctx.r4.u32, s, ctx.r5.u32, ctx.r6.u32, reg,
                       (arch >= 0x82000000 && arch < 0xC0000000) ? L(arch) : 0,
                       (arch >= 0x82000000 && arch < 0xC0000000) ? L(arch + 8) : 0,
+                      glist, glist_vt, reg20, reg20_18,
                       (uint32_t)ctx.lr,
                       ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
     }

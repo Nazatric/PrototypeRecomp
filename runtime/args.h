@@ -17,9 +17,21 @@ inline uint32_t ArgU32(PPCContext& ctx, int i) {
     case 5: return ctx.r8.u32;
     case 6: return ctx.r9.u32;
     case 7: return ctx.r10.u32;
-    case 8: return ctx.r11.u32;
-    case 9: return ctx.r12.u32;
-    default: return 0;
+    default:
+        // Stack arguments: PPC passes args 9+ (index 8+) on the caller's
+        // stack at r1 + 0x54 + (arg_index - 8) * 8 (empirically established
+        // for this title — see the Phase 2B stack-args ABI analysis; the
+        // slots are 8-byte spaced). r11/r12 are VOLATILE and never carry
+        // arguments.
+        if (i >= 8 && i < 24) {
+            uint32_t sp = ctx.r1.u32;
+            uint32_t slot = sp + 0x54 + (uint32_t)(i - 8) * 8;
+            // Any mapped guest address is valid: stacks live at 0x7000xxxx,
+            // the image at 0x82xxxxxx, heap/physical at 0xA0xxxxxx+.
+            if (slot >= 0x10000 && slot < 0xC0000000)
+                return LoadU32(slot);
+        }
+        return 0;
     }
 }
 

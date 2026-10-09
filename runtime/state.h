@@ -344,6 +344,13 @@ struct KernelState {
 
     // Filesystem root: D:\ maps here (extracted game root). Empty = no disc.
     std::string fs_root;
+
+    // Harddisk cache-partition root (\Device\Harddisk0\Partition0..3 →
+    // <hdd_root>/partition0..3). Every retail console ships an HDD with
+    // writable cache partitions; the ATG thread framework opens
+    // \Device\Harddisk0\partition0 during archive-library init. Defaults
+    // to <fs_root>/../hdd; override with PR_HDD_ROOT.
+    std::string hdd_root;
 };
 
 extern KernelState* g_kernel;

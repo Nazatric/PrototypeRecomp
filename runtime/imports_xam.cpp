@@ -277,7 +277,42 @@ IMPORT(XamShowDirtyDiscErrorUI) {
 // =============================================================== tasks/sessions
 
 IMPORT(XamTaskCloseHandle) { RET(X_ERROR_SUCCESS); }
-IMPORT(XamTaskSchedule) { RET(X_ERROR_SUCCESS); }
+IMPORT(XamTaskSchedule) {
+    // (callback, message_ptr, unknown, handle_ptr)
+    // Xenia (xam_task.cc): schedules an asynchronous XThread whose entry is
+    // the callback and whose argument is the XTASK_MESSAGE block. The ATG
+    // thread framework (sub_82A66718) drives ALL of its worker "threads"
+    // through this export — including the cement-library thread created
+    // during archive registration. The task proc (e.g. sub_82A664D8)
+    // dispatches the real thread entry from the message and signals its
+    // completion event. Stack: the module's default stack size, page
+    // aligned (Xenia: max(0x4000, align16k(stack_size))).
+    uint32_t callback = ARG(0);
+    uint32_t message = ARG(1);
+    uint32_t handle_ptr = ARG(3);
+    if (!callback) {
+        if (handle_ptr) StoreU32(handle_ptr, 0);
+        RET(X_STATUS_INVALID_PARAMETER);
+    }
+    auto* t = new GuestThread();
+    t->launch.entry = callback;
+    t->launch.arg = message;
+    t->launch.xapi_startup = 0;
+    t->launch.creation_flags = 0;
+    t->launch.stack_size = 0x40000;  // default_stack_size (page-aligned)
+    uint32_t handle = K().objects.NewHandle(t);
+    if (!t->Create(0x40000)) {
+        delete t;
+        if (handle_ptr) StoreU32(handle_ptr, 0);
+        RET(X_STATUS_NO_MEMORY);
+    }
+    PRLOG(Thread, "XamTaskSchedule: task thread tid=%u entry=%08X (%s) arg=%08X",
+          t->thread_id, callback, GuestFuncName(callback), message);
+    t->host = std::thread([t]() { t->Run(); });
+    t->host.detach();
+    if (handle_ptr) StoreU32(handle_ptr, handle);
+    RET(X_STATUS_SUCCESS);
+}
 IMPORT(XamTaskShouldExit) { RET(0); }
 IMPORT(XamSessionCreateHandle) {
     uint32_t handle_ptr = ARG(0);
@@ -901,7 +936,35 @@ IMPORT(XexGetProcedureAddress) {
 }
 
 IMPORT(XexLoadImageHeaders) { RET(0xC0000135u); }  // module not found
-IMPORT(XexCheckExecutablePrivilege) { RET(1); }
+IMPORT(XexCheckExecutablePrivilege) {
+    // BOOL XexCheckExecutablePrivilege(DWORD Privilege)
+    // Xenia (xboxkrnl_modules.cc): privilege is a BIT POSITION in the
+    // executable module's XEX_HEADER_SYSTEM_FLAGS (key 0x00030000); the
+    // return is (flags >> privilege) & 1. This title's system flags are
+    // 0x600 (bits 9+10), so e.g. privileges 11 and 23 — the two checks the
+    // ATG cementer's 'ATEM' handler (sub_82A5AA28) performs before
+    // initializing the cement library — correctly return 0 and boot
+    // proceeds. The previous unconditional RET(1) made both checks fail,
+    // so the cement library global [0x82DCF578] was never initialized and
+    // every RCF archive registration silently no-op'd.
+    uint32_t privilege = ARG(0);
+    uint32_t flags = 0;
+    uint32_t xex_header = K().var_xex_header;
+    if (xex_header) {
+        uint32_t header_count = LoadU32(xex_header + 0x14);
+        for (uint32_t i = 0; i < header_count; i++) {
+            uint32_t key = LoadU32(xex_header + 0x18 + i * 8);
+            if (key == 0x00030000) {
+                flags = LoadU32(xex_header + 0x18 + i * 8 + 4);
+                break;
+            }
+        }
+    }
+    uint32_t result = (privilege < 32) ? ((flags >> privilege) & 1) : 0;
+    PRLOG(Import, "XexCheckExecutablePrivilege(%u) = %u (flags %08X)",
+          privilege, result, flags);
+    RET(result);
+}
 
 IMPORT(RtlImageXexHeaderField) {
     // (xex_header_ptr, field_key) -> value. The game derives the header via:

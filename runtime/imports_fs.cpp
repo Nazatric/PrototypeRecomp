@@ -75,6 +75,12 @@ struct GuestFile : KernelObject {
     std::string fs_path;         // host path
     bool is_directory = false;
     bool is_device = false;      // \Device\Cdrom0 itself
+    // Raw HDD volume open (\Device\Harddisk0\Partition0, \Cache0/1):
+    // Xenia registers these as NullDevice — "cache/STFC code baked into
+    // games tries reading/writing to these"; all IO succeeds, reads return
+    // zeros. The ATG thread framework reads a 1024-byte owner block and
+    // checks a 'Josh' signature; on clean hardware it reads zeros.
+    bool is_null_volume = false;
     uint64_t position = 0;
     // Directory enumeration state.
     std::vector<std::string> dir_entries;
@@ -149,6 +155,40 @@ static std::string ApplySymbolicLinks(const std::string& raw) {
 // Map an Xbox device path to a host path under fs_root.
 static bool MapToHost(const std::string& device_path, std::string* out) {
     std::string p = device_path;
+    // \Device\Harddisk0\Partition0..3 (with backslash, any case) are the
+    // writable HDD cache partitions — they map under hdd_root, NOT the
+    // read-only disc. Every retail console ships them.
+    {
+        std::string p_low = p;
+        for (auto& c : p_low)
+            if (c >= 'A' && c <= 'Z') c += 32;
+        for (int part = 0; part < 4; part++) {
+            std::string pref = "\\device\\harddisk0\\partition" +
+                               std::to_string(part);
+            std::string pref2 = "\\device\\harddisk0partition" +
+                                std::to_string(part);
+            if (p_low.rfind(pref, 0) == 0) {
+                p = p.substr(pref.size());
+                while (!p.empty() && (p[0] == '\\' || p[0] == '/'))
+                    p = p.substr(1);
+                std::replace(p.begin(), p.end(), '\\', '/');
+                if (K().hdd_root.empty()) return false;
+                *out = K().hdd_root + "/partition" + std::to_string(part) +
+                       (p.empty() ? "" : "/" + p);
+                return true;
+            }
+            if (p_low.rfind(pref2, 0) == 0) {
+                p = p.substr(pref2.size());
+                while (!p.empty() && (p[0] == '\\' || p[0] == '/'))
+                    p = p.substr(1);
+                std::replace(p.begin(), p.end(), '\\', '/');
+                if (K().hdd_root.empty()) return false;
+                *out = K().hdd_root + "/partition" + std::to_string(part) +
+                       (p.empty() ? "" : "/" + p);
+                return true;
+            }
+        }
+    }
     // \Device\Cdrom0\xxx -> <fs_root>/xxx
     if (p.rfind("\\Device\\Cdrom0", 0) == 0) {
         p = p.substr(strlen("\\Device\\Cdrom0"));
@@ -246,12 +286,63 @@ IMPORT(NtCreateFile) {
     // Device opens (\Device\Cdrom0 or \Device\*) succeed as device objects.
     // A trailing backslash (\Device\Cdrom0\ — the VOLUME ROOT) is NOT a
     // device open; it falls through and opens fs_root as a directory.
+    // The entire raw HDD namespace (\Device\Harddisk0\Partition0..3,
+    // \Cache0, \Cache1 and everything under them) is Xenia NullDevice
+    // territory: "Cache/STFC code baked into games tries reading/writing to
+    // these. By using a NullDevice that just returns success to all IO
+    // requests it should allow games to believe cache/raw disk was accessed
+    // successfully." The volume root itself (exact path) is the RAW volume
+    // (ioctls answer geometry/partition info); the root with a trailing
+    // backslash opens as a directory; subpaths are null files.
+    // Returns: 0 = not null-namespace, 1 = raw volume, 2 = volume root dir,
+    // 3 = null file/dir under the volume.
+    auto hdd_null_kind = [](const std::string& device_path) -> int {
+        std::string p_low = device_path;
+        for (auto& c : p_low)
+            if (c >= 'A' && c <= 'Z') c += 32;
+        static const char* kVols[] = {
+            "\\device\\harddisk0\\partition0",
+            "\\device\\harddisk0\\partition1",
+            "\\device\\harddisk0\\partition2",
+            "\\device\\harddisk0\\partition3",
+            "\\device\\harddisk0\\cache0",
+            "\\device\\harddisk0\\cache1",
+            "\\device\\harddisk0partition0",
+            "\\device\\harddisk0partition1",
+            "\\device\\harddisk0partition2",
+            "\\device\\harddisk0partition3",
+        };
+        for (const char* vol : kVols) {
+            std::string v = vol;
+            if (p_low == v) return 1;
+            std::string vslash = v + "\\";
+            if (p_low == vslash) return 2;
+            if (p_low.rfind(vslash, 0) == 0) return 3;
+        }
+        return 0;
+    };
     bool is_device = device_path.rfind("\\Device\\", 0) == 0 &&
                      device_path.find('\\', 8) == std::string::npos;
 
     auto* f = new GuestFile();
     f->guest_path = device_path;
     f->type = kObjTypeFile;
+
+    int null_kind = hdd_null_kind(device_path);
+    if (null_kind) {
+        f->is_null_volume = (null_kind == 1 || null_kind == 3);
+        f->is_directory = (null_kind == 2);
+        f->fs_path = "(null-hdd)";
+        f->guest_addr = GuestMemory::Get().SystemHeapAlloc(0x40, 8);
+        f->size = 0x40;
+        uint32_t h = K().objects.NewHandle(f);
+        if (handle_ptr) StoreU32(handle_ptr, h);
+        if (io_status) { StoreU32(io_status, X_STATUS_SUCCESS); StoreU32(io_status + 4, 0); }
+        FsAudit("create", device_path, true);
+        PRLOG(Filesystem, "NtCreateFile: null-hdd kind=%d '%s' -> handle %08X",
+              null_kind, device_path.c_str(), h);
+        RET(X_STATUS_SUCCESS);
+    }
 
     if (is_device) {
         f->is_device = true;
@@ -337,12 +428,63 @@ IMPORT(NtOpenFile) {
     std::string device_path = ApplySymbolicLinks(raw);
     PRLOG(Filesystem, "NtOpenFile('%s')", raw.c_str());
 
+    // The entire raw HDD namespace (\Device\Harddisk0\Partition0..3,
+    // \Cache0, \Cache1 and everything under them) is Xenia NullDevice
+    // territory: "Cache/STFC code baked into games tries reading/writing to
+    // these. By using a NullDevice that just returns success to all IO
+    // requests it should allow games to believe cache/raw disk was accessed
+    // successfully." The volume root itself (exact path) is the RAW volume
+    // (ioctls answer geometry/partition info); the root with a trailing
+    // backslash opens as a directory; subpaths are null files.
+    // Returns: 0 = not null-namespace, 1 = raw volume, 2 = volume root dir,
+    // 3 = null file/dir under the volume.
+    auto hdd_null_kind = [](const std::string& device_path) -> int {
+        std::string p_low = device_path;
+        for (auto& c : p_low)
+            if (c >= 'A' && c <= 'Z') c += 32;
+        static const char* kVols[] = {
+            "\\device\\harddisk0\\partition0",
+            "\\device\\harddisk0\\partition1",
+            "\\device\\harddisk0\\partition2",
+            "\\device\\harddisk0\\partition3",
+            "\\device\\harddisk0\\cache0",
+            "\\device\\harddisk0\\cache1",
+            "\\device\\harddisk0partition0",
+            "\\device\\harddisk0partition1",
+            "\\device\\harddisk0partition2",
+            "\\device\\harddisk0partition3",
+        };
+        for (const char* vol : kVols) {
+            std::string v = vol;
+            if (p_low == v) return 1;
+            std::string vslash = v + "\\";
+            if (p_low == vslash) return 2;
+            if (p_low.rfind(vslash, 0) == 0) return 3;
+        }
+        return 0;
+    };
     bool is_device = device_path.rfind("\\Device\\", 0) == 0 &&
                      device_path.find('\\', 8) == std::string::npos;
 
     auto* f = new GuestFile();
     f->guest_path = device_path;
     f->type = kObjTypeFile;
+
+    int null_kind = hdd_null_kind(device_path);
+    if (null_kind) {
+        f->is_null_volume = (null_kind == 1 || null_kind == 3);
+        f->is_directory = (null_kind == 2);
+        f->fs_path = "(null-hdd)";
+        f->guest_addr = GuestMemory::Get().SystemHeapAlloc(0x40, 8);
+        f->size = 0x40;
+        uint32_t h = K().objects.NewHandle(f);
+        if (handle_ptr) StoreU32(handle_ptr, h);
+        if (io_status) { StoreU32(io_status, X_STATUS_SUCCESS); StoreU32(io_status + 4, 0); }
+        FsAudit("create", device_path, true);
+        PRLOG(Filesystem, "NtCreateFile: null-hdd kind=%d '%s' -> handle %08X",
+              null_kind, device_path.c_str(), h);
+        RET(X_STATUS_SUCCESS);
+    }
     if (is_device) {
         f->is_device = true;
         f->guest_addr = GuestMemory::Get().SystemHeapAlloc(0x40, 8);
@@ -411,6 +553,27 @@ IMPORT(NtReadFile) {
     uint32_t byte_offset_ptr = ARG(7);
 
     GuestFile* f = LookupFile(handle);
+    if (f && f->is_null_volume) {
+        // Raw HDD volume (Xenia NullFile::ReadSync): reads SUCCEED without
+        // touching the buffer — the caller's prior buffer contents (e.g. the
+        // ATG owner block it just wrote) remain visible, which is exactly
+        // how Xenia's null device lets XMountUtilityDrive's read-back-check
+        // loops terminate. NEVER zero the buffer here.
+        f->position += length;
+        CompleteIO(io_status, X_STATUS_SUCCESS, length);
+        if (event) {
+            auto* ev = dynamic_cast<GuestEvent*>(K().objects.Lookup(event));
+            if (ev) {
+                std::lock_guard<std::mutex> lk(ev->mtx);
+                ev->signaled = true;
+                ev->cv.notify_all();
+            }
+        }
+        PRLOG(Filesystem, "NtReadFile(%08X '%s') [null-volume] = %u zeros @ %llu",
+              handle, f->guest_path.c_str(), length,
+              (unsigned long long)f->position);
+        RET(X_STATUS_SUCCESS);
+    }
     if (!f || f->host_fd < 0) {
         CompleteIO(io_status, X_STATUS_INVALID_HANDLE, 0);
         RET(X_STATUS_INVALID_HANDLE);
@@ -450,6 +613,27 @@ IMPORT(NtWriteFile) {
     uint32_t length = ARG(6);
     uint32_t byte_offset_ptr = ARG(7);
     GuestFile* f = LookupFile(handle);
+    if (f && f->is_null_volume) {
+        // Raw HDD volume (Xenia NullDevice): writes succeed (discarded).
+        if (!byte_offset_ptr) f->position += length;
+        CompleteIO(io_status, X_STATUS_SUCCESS, length);
+        if (event) {
+            auto* ev = dynamic_cast<GuestEvent*>(K().objects.Lookup(event));
+            if (ev) {
+                std::lock_guard<std::mutex> lk(ev->mtx);
+                ev->signaled = true;
+                ev->cv.notify_all();
+            }
+        }
+        static std::atomic<uint64_t> nv_writes{0};
+        uint64_t wn = nv_writes.fetch_add(1);
+        if (wn < 8 || (wn & 0xFFFF) == 0)
+            PRLOG(Filesystem, "NtWriteFile(%08X '%s') [null-volume] = %u "
+                              "bytes discarded (total %llu)",
+                  handle, f->guest_path.c_str(), length,
+                  (unsigned long long)(wn + 1));
+        RET(X_STATUS_SUCCESS);
+    }
     if (!f || f->host_fd < 0) {
         CompleteIO(io_status, X_STATUS_INVALID_HANDLE, 0);
         RET(X_STATUS_INVALID_HANDLE);
@@ -595,10 +779,12 @@ IMPORT(NtSetInformationFile) {
 
 IMPORT(NtQueryVolumeInformationFile) {
     // (handle, io_status, info, length, class)
+    uint32_t handle = ARG(0);
     uint32_t io_status = ARG(1);
     uint32_t info = ARG(2);
     uint32_t length = ARG(3);
     uint32_t class_ = ARG(4);
+    GuestFile* vf = LookupFile(handle);
     if (class_ == 1 /*FileFsVolumeInformation*/) {
         // { u64 creation, u32 serial, u32 label_len, u8 supports objects,
         //   wchar label[] }
@@ -607,6 +793,20 @@ IMPORT(NtQueryVolumeInformationFile) {
             StoreU32(info + 8, 0x50524F54);  // serial
             StoreU32(info + 12, 0);
             StoreU8(info + 16, 0);
+        }
+    } else if (class_ == 3 /*FileFsSizeInformation*/) {
+        // { u64 total_units, u64 avail_units, u32 sectors_per_alloc_unit,
+        //   u32 bytes_per_sector }
+        // XMountUtilityDrive's cache-verification (sub_82A65F50) requires
+        // sectors_per_alloc_unit * bytes_per_sector == the requested
+        // cluster size (0x8000 for this title's ATG thread stacks). The
+        // FATX utility volumes use 32 KiB clusters of 512-byte sectors;
+        // capacity follows the X_IOCTL cache_size (0xFF000 bytes).
+        if (length >= 24) {
+            StoreU64(info + 0, 0x1F);   // total allocation units (31 * 32K)
+            StoreU64(info + 8, 0x1F);   // available units
+            StoreU32(info + 16, 64);    // sectors per allocation unit
+            StoreU32(info + 20, 512);   // bytes per sector
         }
     }
     CompleteIO(io_status, X_STATUS_SUCCESS, length);
@@ -806,6 +1006,16 @@ IMPORT(IoCreateDevice) {
     StoreU32(dev->guest_addr + 0x00, 4);            // type marker
     StoreU32(dev->guest_addr + 0x04, 0x100);        // size
     StoreU32(dev->guest_addr + 0x08, driver_object);
+    // Xenia (xboxkrnl_io.cc IoCreateDevice): "Called from XMountUtilityDrive
+    // XAM-task code. That code tries writing things to a pointer at
+    // out_struct+0x18 — we'll alloc some scratch space for it."
+    {
+        uint32_t scratch = GuestMemory::Get().SystemHeapAlloc(0x1000, 8);
+        if (scratch) {
+            GuestMemset(scratch, 0, 0x1000);
+            StoreU32(dev->guest_addr + 0x18, scratch);
+        }
+    }
     {
         std::lock_guard<std::mutex> lk(K().device_mutex);
         K().devices[name] = dev;
@@ -852,12 +1062,47 @@ IMPORT(IoRemoveShareAccess) { }
 IMPORT(NtDeviceIoControlFile) {
     // (handle, event, apc, ctx, io_status, ioctl, in_buf, in_len, out_buf,
     //  out_len)
+    // Xenia (xboxkrnl_io.cc): "Called by XMountUtilityDrive cache-mounting
+    // code (checks if the returned values look valid, values below seem to
+    // pass the checks)". The cache volume geometry is console hardware
+    // state, not game content:
+    //   X_IOCTL_DISK_GET_DRIVE_GEOMETRY (0x70000):
+    //       out[0..4) = total sectors (cache_size / 512)
+    //       out[4..8) = bytes per sector (512)
+    //   X_IOCTL_DISK_GET_PARTITION_INFO (0x74004):
+    //       out[0..8) = 0
+    //       out[8..16) = cache_size (0xFF000)
+    static const uint32_t kCacheSize = 0xFF000;
+    static const uint32_t kIoctlDiskGetDriveGeometry = 0x70000;
+    static const uint32_t kIoctlDiskGetPartitionInfo = 0x74004;
     uint32_t handle = ARG(0);
     uint32_t io_status = ARG(4);
     uint32_t ioctl = ARG(5);
-    CompleteIO(io_status, X_STATUS_SUCCESS, 0);
-    PRLOGW("NtDeviceIoControlFile(%08X, ioctl=%08X) — stub success", handle,
-           ioctl);
+    uint32_t out_buf = ARG(8);
+    uint32_t out_len = ARG(9);
+    uint8_t* host_out =
+        (out_buf && out_len) ? (uint8_t*)HostFromGuest(out_buf) : nullptr;
+    if (ioctl == kIoctlDiskGetDriveGeometry) {
+        if (host_out && out_len >= 8) {
+            StoreU32(out_buf, kCacheSize / 512);
+            StoreU32(out_buf + 4, 512);
+        }
+        CompleteIO(io_status, X_STATUS_SUCCESS, 8);
+    } else if (ioctl == kIoctlDiskGetPartitionInfo) {
+        if (host_out && out_len >= 0x10) {
+            StoreU32(out_buf, 0);
+            StoreU32(out_buf + 4, 0);
+            StoreU32(out_buf + 8, kCacheSize);
+            StoreU32(out_buf + 12, 0);
+        }
+        CompleteIO(io_status, X_STATUS_SUCCESS, 0x10);
+    } else {
+        // NullDevice semantics for everything else: success, zeroed output.
+        if (host_out && out_len <= 0x10000) memset(host_out, 0, out_len);
+        CompleteIO(io_status, X_STATUS_SUCCESS, out_len);
+    }
+    PRLOG(Filesystem, "NtDeviceIoControlFile(%08X, ioctl=%08X) [outbuf=%08X outlen=%u]",
+          handle, ioctl, out_buf, out_len);
     RET(X_STATUS_SUCCESS);
 }
 

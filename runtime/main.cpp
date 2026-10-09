@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
 
@@ -253,6 +254,43 @@ int BootTitle(const char* xex_path, int argc, char** argv) {
     } else {
         PRLOGW("no filesystem root set (PR_FS_ROOT) — disc absent; D:\\ "
                "opens will fail authentically");
+    }
+    // Harddisk cache partitions (writable, persistent console state):
+    // \Device\Harddisk0\Partition0..3 -> <hdd_root>/partition0..3.
+    {
+        const char* env = getenv("PR_HDD_ROOT");
+        if (env && *env) {
+            K().hdd_root = env;
+        } else if (!K().fs_root.empty()) {
+            // <fs_root>/../hdd
+            size_t slash = K().fs_root.find_last_of('/');
+            std::string parent = (slash == std::string::npos)
+                                     ? K().fs_root
+                                     : K().fs_root.substr(0, slash);
+            K().hdd_root = parent + "/hdd";
+        }
+        if (!K().hdd_root.empty()) {
+            // mkdir -p equivalent for hdd_root and the four partitions.
+            auto mkpath = [](const std::string& dir) {
+                std::string cur;
+                for (size_t i = 0; i <= dir.size(); i++) {
+                    if (i == dir.size() || dir[i] == '/') {
+                        if (!cur.empty()) mkdir(cur.c_str(), 0755);
+                        if (i < dir.size()) cur += '/';
+                    } else {
+                        cur += dir[i];
+                    }
+                }
+            };
+            mkpath(K().hdd_root);
+            for (int p = 0; p < 4; p++) {
+                std::string dir = K().hdd_root + "/partition" +
+                                  std::to_string(p);
+                mkdir(dir.c_str(), 0755);  // EEXIST is fine
+            }
+            PRLOG(Filesystem, "harddisk cache partitions: %s",
+                  K().hdd_root.c_str());
+        }
     }
 
     // 1. Parse raw XEX.
