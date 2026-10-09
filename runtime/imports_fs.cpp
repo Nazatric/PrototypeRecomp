@@ -78,9 +78,14 @@ struct GuestFile : KernelObject {
     // Raw HDD volume open (\Device\Harddisk0\Partition0, \Cache0/1):
     // Xenia registers these as NullDevice — "cache/STFC code baked into
     // games tries reading/writing to these"; all IO succeeds, reads return
-    // zeros. The ATG thread framework reads a 1024-byte owner block and
-    // checks a 'Josh' signature; on clean hardware it reads zeros.
+    // the caller's own buffer contents. The ATG thread framework reads a
+    // 1024-byte owner block and checks a 'Josh' signature; on clean
+    // hardware it reads zeros.
     bool is_null_volume = false;
+    // Partition0 (the SYSTEM partition) persists across boots on real
+    // hardware: the ATG framework's owner-block database lives there.
+    // Backed by a real host file so written data reads back persistently.
+    int raw_fd = -1;
     uint64_t position = 0;
     // Directory enumeration state.
     std::vector<std::string> dir_entries;
@@ -335,12 +340,32 @@ IMPORT(NtCreateFile) {
         f->fs_path = "(null-hdd)";
         f->guest_addr = GuestMemory::Get().SystemHeapAlloc(0x40, 8);
         f->size = 0x40;
+        // Partition0 = the persistent SYSTEM partition on real hardware
+        // (the ATG owner-block database). Give it a real backing file so
+        // writes persist and later reads observe them — exactly like the
+        // console. Cache0/Cache1 are scratch (reformatted every boot by
+        // XMountUtilityDrive) and stay pure null volumes.
+        if (null_kind == 1 && !K().hdd_root.empty()) {
+            std::string p_low = device_path;
+            for (auto& c : p_low)
+                if (c >= 'A' && c <= 'Z') c += 32;
+            if (p_low == "\\device\\harddisk0\\partition0" ||
+                p_low == "\\device\\harddisk0partition0") {
+                std::string img = K().hdd_root + "/partition0.img";
+                f->raw_fd = open(img.c_str(), O_RDWR | O_CREAT, 0644);
+                if (f->raw_fd >= 0) {
+                    // 2 MiB persistent system-partition image.
+                    ftruncate(f->raw_fd, 0x200000);
+                    f->fs_path = img;
+                }
+            }
+        }
         uint32_t h = K().objects.NewHandle(f);
         if (handle_ptr) StoreU32(handle_ptr, h);
         if (io_status) { StoreU32(io_status, X_STATUS_SUCCESS); StoreU32(io_status + 4, 0); }
         FsAudit("create", device_path, true);
-        PRLOG(Filesystem, "NtCreateFile: null-hdd kind=%d '%s' -> handle %08X",
-              null_kind, device_path.c_str(), h);
+        PRLOG(Filesystem, "NtCreateFile: null-hdd kind=%d '%s' -> handle %08X (rawfd=%d)",
+              null_kind, device_path.c_str(), h, f->raw_fd);
         RET(X_STATUS_SUCCESS);
     }
 
@@ -477,12 +502,32 @@ IMPORT(NtOpenFile) {
         f->fs_path = "(null-hdd)";
         f->guest_addr = GuestMemory::Get().SystemHeapAlloc(0x40, 8);
         f->size = 0x40;
+        // Partition0 = the persistent SYSTEM partition on real hardware
+        // (the ATG owner-block database). Give it a real backing file so
+        // writes persist and later reads observe them — exactly like the
+        // console. Cache0/Cache1 are scratch (reformatted every boot by
+        // XMountUtilityDrive) and stay pure null volumes.
+        if (null_kind == 1 && !K().hdd_root.empty()) {
+            std::string p_low = device_path;
+            for (auto& c : p_low)
+                if (c >= 'A' && c <= 'Z') c += 32;
+            if (p_low == "\\device\\harddisk0\\partition0" ||
+                p_low == "\\device\\harddisk0partition0") {
+                std::string img = K().hdd_root + "/partition0.img";
+                f->raw_fd = open(img.c_str(), O_RDWR | O_CREAT, 0644);
+                if (f->raw_fd >= 0) {
+                    // 2 MiB persistent system-partition image.
+                    ftruncate(f->raw_fd, 0x200000);
+                    f->fs_path = img;
+                }
+            }
+        }
         uint32_t h = K().objects.NewHandle(f);
         if (handle_ptr) StoreU32(handle_ptr, h);
         if (io_status) { StoreU32(io_status, X_STATUS_SUCCESS); StoreU32(io_status + 4, 0); }
         FsAudit("create", device_path, true);
-        PRLOG(Filesystem, "NtCreateFile: null-hdd kind=%d '%s' -> handle %08X",
-              null_kind, device_path.c_str(), h);
+        PRLOG(Filesystem, "NtCreateFile: null-hdd kind=%d '%s' -> handle %08X (rawfd=%d)",
+              null_kind, device_path.c_str(), h, f->raw_fd);
         RET(X_STATUS_SUCCESS);
     }
     if (is_device) {
@@ -554,11 +599,30 @@ IMPORT(NtReadFile) {
 
     GuestFile* f = LookupFile(handle);
     if (f && f->is_null_volume) {
-        // Raw HDD volume (Xenia NullFile::ReadSync): reads SUCCEED without
-        // touching the buffer — the caller's prior buffer contents (e.g. the
-        // ATG owner block it just wrote) remain visible, which is exactly
-        // how Xenia's null device lets XMountUtilityDrive's read-back-check
-        // loops terminate. NEVER zero the buffer here.
+        // Partition0 with a real backing file: persistent reads (hardware
+        // behavior — the ATG owner-block database survives reboots).
+        uint8_t* host_buf0 = HostFromGuest(buffer);
+        if (f->raw_fd >= 0 && host_buf0) {
+            off_t ro = (off_t)f->position;
+            if (byte_offset_ptr && LoadU32(byte_offset_ptr) != 0xFFFFFFFF) {
+                uint64_t lo = LoadU32(byte_offset_ptr);
+                uint32_t hi = LoadU32(byte_offset_ptr + 4);
+                ro = (off_t)((hi << 32) | lo);
+            }
+            ssize_t rn = pread(f->raw_fd, host_buf0, length, ro);
+            if (rn < 0) rn = 0;
+            f->position += rn;
+            CompleteIO(io_status, X_STATUS_SUCCESS, (uint32_t)rn);
+            PRLOG(Filesystem, "NtReadFile(%08X '%s') [partition0.img] = %u bytes @ %llu",
+                  handle, f->guest_path.c_str(), (uint32_t)rn,
+                  (unsigned long long)ro);
+            RET(X_STATUS_SUCCESS);
+        }
+        // Other raw HDD volumes (Xenia NullFile::ReadSync): reads SUCCEED
+        // without touching the buffer — the caller's prior buffer contents
+        // (e.g. the ATG owner block it just wrote) remain visible, which is
+        // exactly how Xenia's null device lets XMountUtilityDrive's
+        // read-back-check loops terminate. NEVER zero the buffer here.
         f->position += length;
         CompleteIO(io_status, X_STATUS_SUCCESS, length);
         if (event) {
@@ -614,7 +678,28 @@ IMPORT(NtWriteFile) {
     uint32_t byte_offset_ptr = ARG(7);
     GuestFile* f = LookupFile(handle);
     if (f && f->is_null_volume) {
-        // Raw HDD volume (Xenia NullDevice): writes succeed (discarded).
+        // Partition0 with a real backing file: persistent writes.
+        if (f->raw_fd >= 0) {
+            uint8_t* host_buf1 = HostFromGuest(buffer);
+            if (host_buf1) {
+                off_t wo = (off_t)f->position;
+                bool wuse_off = byte_offset_ptr != 0;
+                if (wuse_off) {
+                    uint64_t lo = LoadU32(byte_offset_ptr);
+                    uint32_t hi = LoadU32(byte_offset_ptr + 4);
+                    wo = (off_t)((hi << 32) | lo);
+                }
+                ssize_t wn = pwrite(f->raw_fd, host_buf1, length, wo);
+                if (wn < 0) wn = 0;
+                f->position += wn;
+                CompleteIO(io_status, X_STATUS_SUCCESS, (uint32_t)wn);
+                PRLOG(Filesystem, "NtWriteFile(%08X '%s') [partition0.img] = %u bytes @ %llu",
+                      handle, f->guest_path.c_str(), (uint32_t)wn,
+                      (unsigned long long)wo);
+                RET(X_STATUS_SUCCESS);
+            }
+        }
+        // Other raw volumes (Xenia NullDevice): writes succeed (discarded).
         if (!byte_offset_ptr) f->position += length;
         CompleteIO(io_status, X_STATUS_SUCCESS, length);
         if (event) {

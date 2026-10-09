@@ -443,6 +443,9 @@ void __imp__sub_828D2C88(PPCContext&, uint8_t*);
 void __imp__sub_828D2E24(PPCContext&, uint8_t*);
 void __imp__sub_828D31A8(PPCContext&, uint8_t*);
 void __imp__sub_828D1730(PPCContext&, uint8_t*);
+void __imp__sub_828E6BA0(PPCContext&, uint8_t*);
+void __imp__sub_828E6D88(PPCContext&, uint8_t*);
+void __imp__sub_8296F4C0(PPCContext&, uint8_t*);
 }
 TRACE_HOOK_COLD(sub_82A5AA28)
 TRACE_HOOK_COLD(sub_82A5A920)
@@ -490,6 +493,61 @@ void sub_828D2C88(PPCContext& ctx, uint8_t* base) {
     __imp__sub_828D2C88(ctx, base);
     if (::pr::g_trace_hooks)
         ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D2C88 r3=%08X", ctx.r3.u32);
+}
+void sub_828E6BA0(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        char s1[64] = {0};
+        uint32_t p = ctx.r4.u32;
+        if (p >= 0x82000000 && p < 0xC0000000) {
+            for (int i = 0; i < 63; i++) {
+                uint8_t c = *(uint8_t*)(::pr::g_guest_base + (uint64_t)(p + i));
+                s1[i] = (char)c;
+                if (!c) break;
+            }
+        }
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828E6BA0[REQ-FACTORY](r3=%08X path='%s' r5=%08X r6=%08X r7=%08X r8=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, s1, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, ctx.r8.u32,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828E6BA0(ctx, base);
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t q) { return ::pr::LoadU32(q); };
+        uint32_t r = ctx.r3.u32;
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      "<< sub_828E6BA0 r3=%08X [r8=%08X r14=%08X]",
+                      r, (r >= 0x82000000 && r < 0xC0000000) ? L(r + 8) : 0,
+                      (r >= 0x82000000 && r < 0xC0000000) ? L(r + 0x14) : 0);
+    }
+}
+void sub_828E6D88(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828E6D88[LOAD-MISS](r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X r8=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, ctx.r8.u32,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828E6D88(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828E6D88 r3=%08X", ctx.r3.u32);
+}
+void sub_8296F4C0(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t q) { return ::pr::LoadU32(q); };
+        uint32_t r = ctx.r4.u32;
+        uint32_t r8 = (r >= 0x82000000 && r < 0xC0000000) ? L(r + 8) : 0;
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_8296F4C0[QUERY](r4=%08X [r4+8]=%08X vt=%08X) [lr=%08X tid=%u]",
+                      r, r8,
+                      (r8 >= 0x82000000 && r8 < 0xC0000000) ? L(r8) : 0,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_8296F4C0(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_8296F4C0 r3=%08X", ctx.r3.u32);
 }
 void sub_828D1730(PPCContext& ctx, uint8_t* base) {
     if (::pr::g_trace_hooks) {
@@ -668,17 +726,20 @@ void sub_828D2D60(PPCContext& ctx, uint8_t* base) {
         // vtable+4 by the load-on-miss path sub_828E6D88).
         uint32_t glist = L(0x82D35D68);
         uint32_t glist_vt = (glist >= 0x82000000 && glist < 0xC0000000) ? L(glist) : 0;
+        // Global key-intern singleton at 0x82D34DDC: +0x10 = the shared
+        // interned-keys table (the insert target during searches).
+        uint32_t intern_tbl = L(0x82D34DDC + 0x10);
         // The registry's hash-table object [reg+0x20] and its table root
         // [+0x18] (0 = empty; find fails instantly).
         uint32_t reg20 = (reg >= 0x82000000 && reg < 0xC0000000) ? L(reg + 0x20) : 0;
         uint32_t reg20_18 = (reg20 >= 0x82000000 && reg20 < 0xC0000000) ? L(reg20 + 0x18) : 0;
         ::pr::LogLine(::pr::LogCategory::kTrace,
                       ">> sub_828D2D60(archive=%08X path=%08X '%s' r5=%08X r6=%08X) reg=[arch+4]=%08X "
-                      "archf0=%08X archf8=%08X glist=%08X(gvt=%08X) reg20=%08X tbl18=%08X [lr=%08X tid=%u]",
+                      "archf0=%08X archf8=%08X glist=%08X(gvt=%08X) reg20=%08X tbl18=%08X intern10=%08X [lr=%08X tid=%u]",
                       arch, ctx.r4.u32, s, ctx.r5.u32, ctx.r6.u32, reg,
                       (arch >= 0x82000000 && arch < 0xC0000000) ? L(arch) : 0,
                       (arch >= 0x82000000 && arch < 0xC0000000) ? L(arch + 8) : 0,
-                      glist, glist_vt, reg20, reg20_18,
+                      glist, glist_vt, reg20, reg20_18, intern_tbl,
                       (uint32_t)ctx.lr,
                       ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
     }
@@ -713,9 +774,17 @@ void sub_828DF140(PPCContext& ctx, uint8_t* base) {
 
 void sub_828DE318(PPCContext& ctx, uint8_t* base) {
     if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        uint32_t c = ctx.r3.u32;
+        uint32_t c10 = (c >= 0x82000000 && c < 0xC0000000) ? L(c + 0x10) : 0;
+        uint32_t tbl = (c10 >= 0x82000000 && c10 < 0xC0000000) ? L(c10 + 0x10) : 0;
+        uint32_t c14 = (c >= 0x82000000 && c < 0xC0000000) ? L(c + 0x14) : 0;
+        uint32_t c38 = (c >= 0x82000000 && c < 0xC0000000) ? L(c + 0x38) : 0;
+        uint32_t c3818 = (c38 >= 0x82000000 && c38 < 0xC0000000) ? L(c38 + 0x18) : 0;
         ::pr::LogLine(::pr::LogCategory::kTrace,
-                      ">> sub_828DE318(r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X) [lr=%08X tid=%u]",
-                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, (uint32_t)ctx.lr,
+                      ">> sub_828DE318(r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X) ctx10=%08X ctx1010=%08X ctx14=%08X ctx38=%08X(18=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32,
+                      c10, tbl, c14, c38, c3818, (uint32_t)ctx.lr,
                       ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
     }
     __imp__sub_828DE318(ctx, base);
