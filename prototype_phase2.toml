@@ -1,0 +1,124 @@
+# PrototypeRecomp Phase 2A — instruction coverage config
+# Derived from the Phase 1 baseline config (same restore/save addresses, all
+# optimizations still OFF so results remain comparable against Phase 1).
+#
+# invalid_instructions: the .text tail 0x82BA86C8-0x82BA880C is an MSVC linker
+# data table ("\0HVE" marker + header + 71 function RVAs), not code. The marker
+# word 0x00485645 occurs exactly once in the whole image (verified by census:
+# analysis/logs/phase2/06_invalid_words_census.txt), so this single entry skips
+# exactly the table (0x82BA86C8 + 324 = 0x82BA880C = .text end) and cannot hide
+# any real instruction elsewhere. Same convention as hedge-dev's own Sonic
+# Unleashed config ("End of .text" entry for the same marker word).
+#
+# longjmp/setjmp: NONE. The two RtlUnwind call sites (0x82A3E990 in
+# sub_82A3E690, 0x82A48504 in sub_82A484F0) are MSVC C++ exception unwinding
+# machinery, not setjmp/longjmp; no bulk-register-save setjmp-style function
+# exists in the image. No redirects.
+
+[main]
+file_path = "default.xex"
+out_directory_path = "../../analysis/out/phase2"
+switch_table_file_path = "switch_tables_phase2.toml"
+
+# ---- optimizations: baseline (all disabled) ----
+skip_lr = false
+skip_msr = false
+ctr_as_local = false
+xer_as_local = false
+reserved_as_local = false
+cr_as_local = false
+non_argument_as_local = false
+non_volatile_as_local = false
+
+# ---- register restore & save functions (Phase 1 pattern-discovered) ----
+restgprlr_14_address = 0x82A37940
+savegprlr_14_address = 0x82A378F0
+restfpr_14_address = 0x82A3954C
+savefpr_14_address = 0x82A39500
+restvmx_14_address = 0x82A39F58
+savevmx_14_address = 0x82A39CC0
+restvmx_64_address = 0x82A39FEC
+savevmx_64_address = 0x82A39D54
+
+# ---- forced functions: NONE ----
+# The 16 "MSVC EH interpreter" entries added in an earlier Phase 2C session
+# were a misdiagnosis: sub_82A3F018 is the MSVC CRT printf format engine
+# (_output), and its "EH jump table" is the format-specifier dispatch
+# (u16-offset table at 0x820E8EB8, handler base 0x82A3F460). Forcing those
+# mid-function handler addresses as separate functions PARTITIONED the
+# formatter and destroyed its register/flow continuity (observed as a
+# clobbered r30, a NULL lua_State reaching luaS_newlstring, and a bctrl
+# through CTR=0). The dispatches are now recovered as real switch tables in
+# switch_tables_phase2.toml; sub_82A3F018 regenerates whole via .pdata
+# (82A3F018..82A3FB5C).
+functions = [
+# ---- Phase 2C: gap-region functions containing in-function switch tables ----
+# Entry points derived from bl targets AND .rdata/.data indirect pointers;
+# every entry is a real function start so lookup-table calls resolve.
+    { address = 0x82234E48, size = 0x110 },
+    { address = 0x823196B8, size = 0x108 },
+    { address = 0x8233FB2C, size = 0x4 },
+    { address = 0x8233FB30, size = 0x138 },
+    { address = 0x82351914, size = 0x4 },
+    { address = 0x82351918, size = 0xC8 },
+    { address = 0x82365000, size = 0x18 },
+    { address = 0x82365018, size = 0x8 },
+    { address = 0x82365020, size = 0xB8 },
+    { address = 0x82436024, size = 0x4 },
+    { address = 0x82436028, size = 0x58 },
+    { address = 0x82436080, size = 0x108 },
+    { address = 0x82436188, size = 0x20 },
+    { address = 0x824361A8, size = 0x40 },
+    { address = 0x824361E8, size = 0x88 },
+    { address = 0x82436270, size = 0x8 },
+    { address = 0x82436278, size = 0x28 },
+    { address = 0x82483958, size = 0x278 },
+    { address = 0x824B7184, size = 0x4 },
+    { address = 0x824B7188, size = 0x220 },
+    { address = 0x824C04FC, size = 0x4 },
+    { address = 0x824C0500, size = 0x1B0 },
+    { address = 0x824DBB20, size = 0xD0 },
+    { address = 0x824DBBF0, size = 0x1F8 },
+    { address = 0x824DBDE8, size = 0x50 },
+    { address = 0x824DFCE0, size = 0x50 },
+    { address = 0x824DFD30, size = 0x150 },
+    { address = 0x824EACC4, size = 0x4 },
+    { address = 0x824EACC8, size = 0x100 },
+    { address = 0x824F8DD8, size = 0x50 },
+    { address = 0x824F8E28, size = 0x108 },
+    { address = 0x8250873C, size = 0x4 },
+    { address = 0x82508740, size = 0xC0 },
+    { address = 0x8251A050, size = 0xE0 },
+    { address = 0x8254A174, size = 0x4 },
+    { address = 0x8254A178, size = 0xA8 },
+    { address = 0x82679BD8, size = 0x110 },
+    { address = 0x82679CE8, size = 0x10 },
+    { address = 0x8267AEC4, size = 0x4 },
+    { address = 0x8267AEC8, size = 0xC0 },
+    { address = 0x8267AF88, size = 0x1B8 },
+    { address = 0x826B8088, size = 0x100 },
+    { address = 0x8281822C, size = 0x4 },
+    { address = 0x82818230, size = 0x98 },
+    { address = 0x8283E60C, size = 0x4 },
+    { address = 0x8283E610, size = 0xA0 },
+    { address = 0x8283E6B0, size = 0x1B8 },
+    { address = 0x82929B94, size = 0x4 },
+    { address = 0x82929B98, size = 0x188 },
+    { address = 0x82A063A4, size = 0x4 },
+    { address = 0x82A063A8, size = 0x1A8 },
+    { address = 0x82A12880, size = 0x408 },
+    { address = 0x82A16CD8, size = 0xC8 },
+    { address = 0x82A23C18, size = 0xA0 },
+    { address = 0x82AD7B80, size = 0x8 },
+    { address = 0x82AD7B88, size = 0x10 },
+    { address = 0x82AD7B98, size = 0x158 },
+    { address = 0x82AE7970, size = 0xB0 },
+    { address = 0x82AE7A20, size = 0x138 },
+    { address = 0x82AE9E6C, size = 0x4 },
+    { address = 0x82AE9E70, size = 0xF8 },
+]
+
+# ---- invalid instruction skips ----
+invalid_instructions = [
+    { data = 0x00485645, size = 324 }, # End of .text data table (HVE marker)
+]
