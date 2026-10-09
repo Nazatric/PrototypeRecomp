@@ -1066,7 +1066,7 @@ IMPORT(RtlEnterCriticalSection) {
     GuestThread* cur = GuestThread::GetCurrent();
     uint32_t cur_kthread = cur ? cur->kthread : 0;
     GuestCS* cs = MakeCS(cs_ptr);
-    const bool kTraceThisCS = (cs_ptr == 0x82DC98E8);
+    const bool kTraceThisCS = false; // disabled: 29M-line log runaway in queue pump
     if (kTraceThisCS) {
         PRLOG(Thread, "[cs-trace] ENTER %08X by kt=%08X (tid=%u) lr=%08X: "
               "owner=%08X rec=%d waiters=%zu",
@@ -1169,7 +1169,15 @@ IMPORT(RtlLeaveCriticalSection) {
         }
         cs->owner = 0;
         cs->recursion = 0;
-        cs->cv.notify_one();
+        // LOST-WAKEUP FIX: the entry predicate requires the FRONT waiter to be
+        // the acquirer, but notify_one() wakes an ARBITRARY waiter. A non-front
+        // waiter consumes the notification, re-evaluates (front != me), and
+        // sleeps again — the front waiter's earlier notification was already
+        // consumed while the predicate was false, so it never wakes: owner=0
+        // with sleepers forever (observed: CS AB7525D4 owner=0, 3 waiters,
+        // RCF mount worker tid10 dead -> cement parse never ran). notify_all
+        // makes every waiter re-evaluate; only the front proceeds.
+        cs->cv.notify_all();
     }
     StoreU32(cs_ptr + 0x08, 0xFFFFFFFF);
     StoreU32(cs_ptr + 0x0C, 0);

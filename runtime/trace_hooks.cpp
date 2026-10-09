@@ -89,7 +89,6 @@ void __imp__sub_82A8E7A0(PPCContext&, uint8_t*);
 // vtable method 8239EF58 -> 8239D908 -> 82A58CA8(8, paths[5], 5) ->
 // per-file 82A58B80(8, path) -> 82A588C8 / 82A56CC8.
 void __imp__sub_8239EF58(PPCContext&, uint8_t*);
-void __imp__sub_8239D908(PPCContext&, uint8_t*);
 void __imp__sub_8227C0B0(PPCContext&, uint8_t*);
 void __imp__sub_82A58CA8(PPCContext&, uint8_t*);
 void __imp__sub_82A58B80(PPCContext&, uint8_t*);
@@ -124,6 +123,8 @@ void __imp__sub_8280AD80(PPCContext&, uint8_t*);
 void __imp__sub_82807668(PPCContext&, uint8_t*);
 void __imp__sub_82806A08(PPCContext&, uint8_t*);
 void __imp__sub_82267FB0(PPCContext&, uint8_t*);
+void __imp__sub_8239D908(PPCContext&, uint8_t*);
+void __imp__sub_82A87608(PPCContext&, uint8_t*);
 }
 
 #define TRACE_HOOK(name)                                                    \
@@ -309,7 +310,32 @@ TRACE_HOOK_COLD(sub_8239EF58)
 TRACE_HOOK_COLD(sub_8239D908)
 TRACE_HOOK_COLD(sub_8227C0B0)
 TRACE_HOOK_COLD(sub_82A58CA8)
-TRACE_HOOK_COLD(sub_82A58B80)
+static void RdGuestStr(char* out, size_t n, uint32_t p);
+
+// custom: dump the cement-library global state at registration time
+void sub_82A58B80(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        char s[96] = {0};
+        RdGuestStr(s, sizeof s, ctx.r4.u32);
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        // cement global struct @ 0x82DCF578 (lis 0x82DD + addi -0xA88)
+        uint32_t g = 0x82DCF578;
+        char dump[600] = {0};
+        int n = 0;
+        for (int off = 0; off < 0x150 && n < 560; off += 4) {
+            if (L(g + off) != 0)
+                n += snprintf(dump + n, sizeof(dump) - n, "+%X=%08X ", off, L(g + off));
+        }
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82A58B80[REG-ARCHIVE](type=%u path='%s') cement nonzero: %s [lr=%08X tid=%u]",
+                      (unsigned)ctx.r3.u32, s, dump,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82A58B80(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_82A58B80 r3=%08X", ctx.r3.u32);
+}
 TRACE_HOOK_COLD(sub_82A56CC8)
 TRACE_HOOK_COLD(sub_82A588C8)
 TRACE_HOOK_COLD(sub_823CE4A8)
@@ -324,6 +350,478 @@ TRACE_HOOK_COLD(sub_82A876B0)
 TRACE_HOOK_COLD(sub_82A874C0)
 TRACE_HOOK_COLD(sub_82A87460)
 TRACE_HOOK_COLD(sub_8239D138)
+
+// ---- .rz decompression chain (Phase 2E frontend-asset loading) ----
+// The content loader pumps decompress tasks via sub_827F2798 -> sub_827F3680
+// (ring-buffer LZ decompressor) and read pumps via sub_827F5900 -> sub_82A37000
+// (strided copy). Crash under investigation: dst buffer NULL.
+extern "C" {
+void __imp__sub_827F28D0(PPCContext&, uint8_t*);
+void __imp__sub_827F3680(PPCContext&, uint8_t*);
+void __imp__sub_827F5900(PPCContext&, uint8_t*);
+void __imp__sub_82A37000(PPCContext&, uint8_t*);
+void __imp__sub_827F5218(PPCContext&, uint8_t*);
+void __imp__sub_827F35F8(PPCContext&, uint8_t*);
+void __imp__sub_82A372A0(PPCContext&, uint8_t*);
+void __imp__sub_82A371C8(PPCContext&, uint8_t*);
+void __imp__sub_828D2D60(PPCContext&, uint8_t*);
+void __imp__sub_828DF140(PPCContext&, uint8_t*);
+void __imp__sub_828DE318(PPCContext&, uint8_t*);
+void __imp__sub_828CAE98(PPCContext&, uint8_t*);
+void __imp__sub_828EF900(PPCContext&, uint8_t*);
+void __imp__sub_828C40F8(PPCContext&, uint8_t*);
+void __imp__sub_828D45A8(PPCContext&, uint8_t*);
+void __imp__sub_828D4588(PPCContext&, uint8_t*);
+void __imp__sub_828D2400(PPCContext&, uint8_t*);
+void __imp__sub_828EDD10(PPCContext&, uint8_t*);
+void __imp__sub_828EDB90(PPCContext&, uint8_t*);
+void __imp__sub_828D2558(PPCContext&, uint8_t*);
+void __imp__sub_828D25D8(PPCContext&, uint8_t*);
+void __imp__sub_827F4980(PPCContext&, uint8_t*);
+void __imp__sub_8286A780(PPCContext&, uint8_t*);
+void __imp__sub_82A5BE88(PPCContext&, uint8_t*);
+void __imp__sub_82A9B4A8(PPCContext&, uint8_t*);
+void __imp__sub_82A53D80(PPCContext&, uint8_t*);
+}
+
+void sub_828D2400(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        uint32_t q = ctx.r3.u32;
+        char extra[400] = {0};
+        if (q >= 0x82000000 && q < 0xC0000000) {
+            int n = 0;
+            for (int off = 0; off <= 0x30 && n < 340; off += 4)
+                n += snprintf(extra + n, sizeof(extra) - n, "+%02X=%08X ", off, L(q + off));
+            // bucket array at [q+0x18]: [+0]=base, [+4]=count, entries 16B
+            uint32_t ba = L(q + 0x18);
+            if (ba >= 0x82000000 && ba < 0xC0000000) {
+                uint32_t bbase = ba + 8, bcount = L(ba + 4);
+                int nonempty = 0;
+                if (bbase >= 0x82000000 && bbase < 0xC0000000 && bcount < 0x10000) {
+                    for (uint32_t i = 0; i < bcount && i < 4096; i++) {
+                        uint32_t e0 = L(bbase + 0);   // entries at bbase + i*16? per disasm: r10 = ba+8 start
+                        if (e0 != 0xFFFFFFFE) nonempty++;
+                        bbase += 16;
+                    }
+                }
+                ::pr::LogLine(::pr::LogCategory::kTrace,
+                              "[buckets] ba=%08X count=%08X nonempty=%d e0=%08X e1=%08X e2=%08X",
+                              ba, bcount, nonempty, L(ba + 8), L(ba + 12), L(ba + 16));
+            }
+        }
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D2400(q=%08X r4=%08X r5=%08X) %s [lr=%08X tid=%u]",
+                      q, ctx.r4.u32, ctx.r5.u32, extra, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828D2400(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D2400 r3=%08X", ctx.r3.u32);
+}
+
+void sub_828EDD10(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828EDD10(r3=%08X r4=%08X r5=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828EDD10(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828EDD10 r3=%08X", ctx.r3.u32);
+}
+
+void sub_828EDB90(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828EDB90(r3=%08X r4=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828EDB90(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828EDB90 r3=%08X", ctx.r3.u32);
+}
+
+void sub_828EF900(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        uint32_t req = ctx.r3.u32, reg = ctx.r4.u32;
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828EF900(req=%08X reg=%08X r5=%08X r6=%08X) [lr=%08X tid=%u]",
+                      req, reg, ctx.r5.u32, ctx.r6.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+        if (reg >= 0x82000000 && reg < 0xC0000000) {
+            uint32_t p8 = L(reg + 8), p20 = L(reg + 0x20);
+            ::pr::LogLine(::pr::LogCategory::kTrace,
+                          "[reg] +08=%08X (deref=%08X) +20=%08X (vt=%08X m0=%08X m1=%08X)",
+                          p8, (p8 >= 0x82000000 && p8 < 0x82C00000) ? L(p8) : 0,
+                          p20,
+                          (p20 >= 0x82000000 && p20 < 0xC0000000) ? L(p20) : 0,
+                          (p20 >= 0x82000000 && p20 < 0xC0000000) ? L(p20 + 8) : 0,
+                          (p20 >= 0x82000000 && p20 < 0xC0000000 && L(p20) >= 0x82000000 && L(p20) < 0x82C00000) ? L(L(p20) + 4) : 0);
+        }
+    }
+    __imp__sub_828EF900(ctx, base);
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        if (ctx.r3.u32 >= 0x82000000 && ctx.r3.u32 < 0xC0000000)
+            ::pr::LogLine(::pr::LogCategory::kTrace,
+                          "<< sub_828EF900 req=%08X f38=%08X f3C=%08X f40=%08X f44=%08X",
+                          ctx.r3.u32, L(ctx.r3.u32 + 0x38), L(ctx.r3.u32 + 0x3C),
+                          L(ctx.r3.u32 + 0x40), L(ctx.r3.u32 + 0x44));
+    }
+}
+
+// ---- RCF archive lookup chain (Phase 2E: the frontend-asset blocker) ----
+// sub_828D2D60(archive, path, ?, ?) -> NULL when [archive+4] (registry) is
+// NULL or the finder sub_828DF140 fails. Callers deref the result -> crash.
+static void RdGuestStr(char* out, size_t n, uint32_t p) {
+    if (p < 0x82000000 || p >= 0xC0000000) { out[0] = 0; return; }
+    for (size_t i = 0; i + 1 < n; i++) {
+        uint8_t c = *(uint8_t*)(::pr::g_guest_base + (uint64_t)(p + i));
+        out[i] = (char)c;
+        if (!c) return;
+    }
+    out[n - 1] = 0;
+}
+
+void sub_828CAE98(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        char s[96] = {0};
+        RdGuestStr(s, sizeof s, ctx.r5.u32);
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828CAE98(r3=%08X r4=%08X r5=%08X '%s' r6=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, s, ctx.r6.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828CAE98(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828CAE98 r3=%08X", ctx.r3.u32);
+}
+
+void sub_828D2D60(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        char s[96] = {0};
+        RdGuestStr(s, sizeof s, ctx.r4.u32);
+        uint32_t arch = ctx.r3.u32;
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        uint32_t reg = (arch >= 0x82000000 && arch < 0xC0000000) ? L(arch + 4) : 0xDEAD;
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D2D60(archive=%08X path=%08X '%s' r5=%08X r6=%08X) reg=[arch+4]=%08X "
+                      "archf0=%08X archf8=%08X [lr=%08X tid=%u]",
+                      arch, ctx.r4.u32, s, ctx.r5.u32, ctx.r6.u32, reg,
+                      (arch >= 0x82000000 && arch < 0xC0000000) ? L(arch) : 0,
+                      (arch >= 0x82000000 && arch < 0xC0000000) ? L(arch + 8) : 0,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828D2D60(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D2D60 r3=%08X", ctx.r3.u32);
+}
+
+void sub_828DF140(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        char s[96] = {0};
+        RdGuestStr(s, sizeof s, ctx.r4.u32);
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        uint32_t reg = ctx.r3.u32;
+        char extra[512] = {0};
+        if (reg >= 0x82000000 && reg < 0xC0000000) {
+            // dump registry fields 0x00..0x40
+            int n = 0;
+            for (int off = 0; off <= 0x40 && n < 400; off += 4) {
+                n += snprintf(extra + n, sizeof(extra) - n, "+%02X=%08X ", off, L(reg + off));
+            }
+        }
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828DF140(reg=%08X path='%s' r5=%08X r6=%08X r7=%08X) %s [lr=%08X tid=%u]",
+                      reg, s, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, extra, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828DF140(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828DF140 r3=%08X", ctx.r3.u32);
+}
+
+void sub_828DE318(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828DE318(r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828DE318(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828DE318 r3=%08X", ctx.r3.u32);
+}
+
+static void DumpRing(const char* tag, uint32_t st) {
+    if (st < 0x82000000 || st >= 0xC0000000) return;
+    auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+    uint32_t ring = L(st + 0x24);
+    if (ring < 0x82000000 || ring >= 0xC0000000) {
+        ::pr::LogLine(::pr::LogCategory::kTrace, "[ring] %s st=%08X ring=INVALID(%08X)", tag, st, ring);
+        return;
+    }
+    ::pr::LogLine(::pr::LogCategory::kTrace,
+                  "[ring] %s st=%08X ring=%08X f38=%08X f1C=%08X f3C=%08X bytes: "
+                  "%02X %02X %02X %02X | %02X %02X %02X %02X | %02X %02X %02X %02X | %02X %02X %02X %02X",
+                  tag, st, ring, L(st + 0x38), L(st + 0x1C), L(st + 0x3C),
+                  *(uint8_t*)(::pr::g_guest_base + ring),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 1),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 2),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 3),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 4),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 5),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 6),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 7),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 8),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 9),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 10),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 11),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 12),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 13),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 14),
+                  *(uint8_t*)(::pr::g_guest_base + ring + 15));
+}
+
+void sub_827F35F8(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_827F35F8(state=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+        DumpRing("reset-pre", ctx.r3.u32);
+    }
+    __imp__sub_827F35F8(ctx, base);
+    if (::pr::g_trace_hooks)
+        DumpRing("reset-post", ctx.r3.u32);
+}
+
+void sub_82A372A0(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82A372A0(value=%08X mode=%08X alloc=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82A372A0(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_82A372A0 r3=%08X", ctx.r3.u32);
+}
+
+void sub_82A371C8(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82A371C8(obj=%08X value=%08X mode=%08X alloc=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82A371C8(ctx, base);
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        if (ctx.r3.u32 >= 0x82000000 && ctx.r3.u32 < 0xC0000000)
+            ::pr::LogLine(::pr::LogCategory::kTrace,
+                          "<< sub_82A371C8 obj=%08X vt=%08X f14=%08X f18=%08X f1C=%08X",
+                          ctx.r3.u32, L(ctx.r3.u32), L(ctx.r3.u32 + 0x14),
+                          L(ctx.r3.u32 + 0x18), L(ctx.r3.u32 + 0x1C));
+    }
+}
+
+static void DumpDecompState(const char* tag, uint32_t st) {
+    // Decompressor state layout (from static analysis of sub_827F3680):
+    // +0x0C allocator/stream object, +0x10 bufsize, +0x14 limit, +0x18 outbuf,
+    // +0x24 ?, +0x2C uncompressed size, +0x30/0x34 cursor fields.
+    if (st < 0x82000000 || st >= 0xC0000000) return;
+    auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+    ::pr::LogLine(::pr::LogCategory::kTrace,
+                  "[decomp] %s st=%08X: alloc=%08X bufsz=%08X limit=%08X "
+                  "outbuf=%08X f24=%08X uncsz=%08X f30=%08X f34=%08X "
+                  "| this60: f1C=%08X f0=%08X f8=%08X",
+                  tag, st, L(st + 0xC), L(st + 0x10), L(st + 0x14),
+                  L(st + 0x18), L(st + 0x24), L(st + 0x2C), L(st + 0x30),
+                  L(st + 0x34), L(st + 0x7C), L(st + 0x60), L(st + 0x68));
+}
+
+void sub_827F3680(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_827F3680(state=%08X src=%08X len=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+        DumpDecompState("pre", ctx.r3.u32);
+    }
+    __imp__sub_827F3680(ctx, base);
+    if (::pr::g_trace_hooks)
+        DumpDecompState("post", ctx.r3.u32);
+}
+
+void sub_827F5900(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        uint32_t stream = ctx.r4.u32;
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_827F5900(this=%08X stream=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, stream, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+        if (stream >= 0x82000000 && stream < 0xC0000000) {
+            uint32_t bufd = L(stream + 0x3C);
+            ::pr::LogLine(::pr::LogCategory::kTrace,
+                          "[readpump] stream=%08X bufd=%08X base=%08X f4=%08X f8=%08X fC=%08X f10=%08X",
+                          stream, bufd,
+                          (bufd >= 0x82000000 && bufd < 0xC0000000) ? L(bufd) : 0,
+                          (bufd >= 0x82000000 && bufd < 0xC0000000) ? L(bufd + 4) : 0,
+                          (bufd >= 0x82000000 && bufd < 0xC0000000) ? L(bufd + 8) : 0,
+                          (bufd >= 0x82000000 && bufd < 0xC0000000) ? L(bufd + 0xC) : 0,
+                          (bufd >= 0x82000000 && bufd < 0xC0000000) ? L(bufd + 0x10) : 0);
+        }
+    }
+    __imp__sub_827F5900(ctx, base);
+}
+
+void sub_82A37000(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82A37000(r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X r8=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, ctx.r8.u32,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82A37000(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_82A37000 r3=%08X", ctx.r3.u32);
+}
+
+void sub_827F28D0(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_827F28D0(r3=%08X r4=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+        if (ctx.r3.u32 >= 0x82000000 && ctx.r3.u32 < 0xC0000000) {
+            auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+            ::pr::LogLine(::pr::LogCategory::kTrace,
+                          "[task] r3 obj: fC0=%08X fC4=%08X fE0=%08X fE4=%08X fE8=%08X fEC=%08X fF0=%08X",
+                          L(ctx.r3.u32 + 0xC0), L(ctx.r3.u32 + 0xC4), L(ctx.r3.u32 + 0xE0),
+                          L(ctx.r3.u32 + 0xE4), L(ctx.r3.u32 + 0xE8), L(ctx.r3.u32 + 0xEC),
+                          L(ctx.r3.u32 + 0xF0));
+        }
+    }
+    __imp__sub_827F28D0(ctx, base);
+}
+
+
+static std::atomic<uint64_t> g_insert_count{0};
+static std::atomic<uint64_t> g_insert_made{0};
+
+void sub_828D2558(PPCContext& ctx, uint8_t* base) {
+    g_insert_count.fetch_add(1);
+    if (::pr::g_trace_hooks && g_insert_count.load() <= 8) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D2558[insert](this=%08X r4=%08X r5=%08X r6=%08X r7=%08X) #%llu [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32,
+                      (unsigned long long)g_insert_count.load(), (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828D2558(ctx, base);
+    if (::pr::g_trace_hooks && g_insert_count.load() <= 8)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D2558 r3=%08X", ctx.r3.u32);
+    if (ctx.r3.u32 != 0) g_insert_made.fetch_add(1);
+}
+
+void sub_828D25D8(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks && g_insert_count.load() < 3) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D25D8(this=%08X r4=%08X r5=%08X r6=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828D25D8(ctx, base);
+}
+
+
+void sub_827F4980(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        char s[48] = {0};
+        RdGuestStr(s, sizeof s, ctx.r3.u32);
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_827F4980[RCF-PARSE](r3=%08X '%s' r4=%08X) f1C=%08X f14=%08X [lr=%08X tid=%u]",
+                      ctx.r3.u32, s, ctx.r4.u32,
+                      (ctx.r3.u32 >= 0x82000000 && ctx.r3.u32 < 0xC0000000) ? L(ctx.r3.u32 + 0x1C) : 0,
+                      (ctx.r3.u32 >= 0x82000000 && ctx.r3.u32 < 0xC0000000) ? L(ctx.r3.u32 + 0x14) : 0,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_827F4980(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_827F4980 r3=%08X", ctx.r3.u32);
+}
+
+void sub_8286A780(PPCContext& ctx, uint8_t* base) {
+    static std::atomic<uint64_t> n{0};
+    if (::pr::g_trace_hooks && n.fetch_add(1) < 4) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_8286A780[RCF-MOUNT-TASK](r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_8286A780(ctx, base);
+}
+
+
+void sub_82A5BE88(PPCContext& ctx, uint8_t* base) {
+    static std::atomic<uint64_t> n{0};
+    uint64_t idx = n.fetch_add(1);
+    if (::pr::g_trace_hooks && idx < 40) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82A5BE88[DISC-READ](r3=%08X r4=%08X r5=%08X r6=%08X r7=%08X) #%llu [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32,
+                      (unsigned long long)idx, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82A5BE88(ctx, base);
+    if (::pr::g_trace_hooks && idx < 40)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_82A5BE88 #%llu r3=%08X", (unsigned long long)idx, ctx.r3.u32);
+}
+
+
+void sub_82A9B4A8(PPCContext& ctx, uint8_t* base) {
+    static std::atomic<uint64_t> n{0};
+    uint64_t idx = n.fetch_add(1);
+    if (::pr::g_trace_hooks && idx < 60) {
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82A9B4A8[MSG-DISPATCH](r3=%08X r4=%08X r5=%08X r6=%08X r10=%u) #%llu [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, (unsigned)ctx.r10.u32,
+                      (unsigned long long)idx, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82A9B4A8(ctx, base);
+}
+
+
+void sub_82A53D80(PPCContext& ctx, uint8_t* base) {
+    static std::atomic<uint64_t> n{0};
+    uint64_t idx = n.fetch_add(1);
+    if (::pr::g_trace_hooks && idx < 30) {
+        char s[64] = {0};
+        RdGuestStr(s, sizeof s, ctx.r3.u32);
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82A53D80[CFG-HASH](r3=%08X '%s' r4=%08X r5=%08X) #%llu [lr=%08X tid=%u]",
+                      ctx.r3.u32, s, ctx.r4.u32, ctx.r5.u32,
+                      (unsigned long long)idx, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82A53D80(ctx, base);
+    if (::pr::g_trace_hooks && idx < 30)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_82A53D80 #%llu r3=%08X (want 65B)", (unsigned long long)idx, ctx.r3.u32);
+}
+
+
+
 
 namespace pr {
 void TraceHooksInit() {

@@ -4882,3 +4882,39 @@ labels = [
     0x82A7C538,
     0x82A7C548,
 ]
+
+# ---- byte-offset dispatch tables (audio/LZ codec state machines) ----
+# Pattern: lbzx rD,rTbl,rIdx ; rlwinm rD,rD,2,0,29 ; lis/addi rBase ; add ;
+# mtctr ; bctr — one-byte entries scaled by 4, relative to the code base
+# (the instruction right after the bctr). Recovered from pristine.bin.
+
+# site1: sub_82A40DC0 audio state machine, 12 states, table@0x820E8F50
+[[switch]]
+base = 0x82A40EB4
+r = 11
+labels = [
+    0x82A40EB8, 0x82A40F2C, 0x82A40FAC, 0x82A41028, 0x82A41098, 0x82A4110C,
+    0x82A4112C, 0x82A411AC, 0x82A41174, 0x82A41204, 0x82A411F8, 0x82A411C4,
+]
+
+# site2: sub_82A47D78 LZ decompressor state machine, 29 states, table@0x820E9658
+[[switch]]
+base = 0x82A47DF4
+r = 9
+labels = [
+    0x82A47E60, 0x82A480A0, 0x82A480A0, 0x82A480A0, 0x82A480A0, 0x82A48094,
+    0x82A480A0, 0x82A480A0, 0x82A480A0, 0x82A480A0, 0x82A480A0, 0x82A480A0,
+    0x82A47ED8, 0x82A47DF8, 0x82A47DF8, 0x82A47DF8, 0x82A48000, 0x82A48088,
+    0x82A47E78, 0x82A48098, 0x82A48000, 0x82A47EF8, 0x82A4800C, 0x82A48038,
+    0x82A48000, 0x82A48088, 0x82A47E78, 0x82A480B8, 0x82A48000,
+]
+
+# site3: sub_82A782A0 audio state machine, 16 states, table@0x820EB6B8
+[[switch]]
+base = 0x82A78390
+r = 31
+labels = [
+    0x82A78398, 0x82A78394, 0x82A78398, 0x82A78524, 0x82A78470, 0x82A78470,
+    0x82A78610, 0x82A78634, 0x82A78694, 0x82A78694, 0x82A78398, 0x82A78694,
+    0x82A78524, 0x82A78694, 0x82A78678, 0x82A78684,
+]

@@ -220,7 +220,23 @@ IMPORT(XamContentFlush) { RET(X_ERROR_SUCCESS); }
 IMPORT(XamContentGetCreator) { RET(0); }
 IMPORT(XamContentGetDeviceData) { RET(0x87D0000Fu); }
 IMPORT(XamContentGetDeviceState) { RET(0x87D0000Fu); }
-IMPORT(XamContentGetLicenseMask) { RET(0); }
+// XamContentGetLicenseMask(mask_out, overlapped): each bit = a granted content
+// license. Prototype's boot gate (sub_8239D908) compares the result with
+// 0x65B and only registers the RCF archive hash tables (sub_82A58CA8 ->
+// cement TOC parse -> archive lookups) when it matches — verified at runtime:
+// with 0 the five real RCFs are read but never registered, so every
+// art\hud\fonts_latin.gfx-style archive lookup fails and the frontend load
+// stalls. 0x65B = the licensed-retail mask this title expects.
+IMPORT(XamContentGetLicenseMask) {
+    uint32_t mask_out = ARG(0);
+    uint32_t overlapped = ARG(1);
+    if (mask_out) StoreU32(mask_out, 0x65B);
+    if (overlapped) {
+        StoreU32(overlapped + 0x00, 0);
+        StoreU32(overlapped + 0x04, 0);
+    }
+    RET(0x65B);
+}
 IMPORT(XamContentSetThumbnail) { RET(0); }
 IMPORT(XamContentDelete) { RET(0); }
 IMPORT(XamCreateEnumeratorHandle) { RET(0); }

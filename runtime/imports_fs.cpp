@@ -281,14 +281,25 @@ IMPORT(NtCreateFile) {
                     device_path.c_str(), host.c_str());
     }
     if (fd < 0 && !is_dir) {
-        // create_disp: 1=CREATE_NEW, 2=CREATE_ALWAYS, 3=OPEN_EXISTING,
-        // 4=OPEN_ALWAYS, 5=TRUNCATE_EXISTING
-        if (create_disp == 4 /*OPEN_ALWAYS*/ || create_disp == 2 ||
-            create_disp == 1) {
-            if (!K().fs_root.empty()) {
-                fd = open(host.c_str(), O_RDWR | O_CREAT, 0644);
-                if (fd >= 0) exists = true;
-            }
+        // Xbox NT create disposition (Xenia kernel_types.h) — NOT the Win32
+        // CreateFile mapping:
+        //   0 = FILE_SUPERSEDED   (create/truncate)
+        //   1 = FILE_OPEN         (fail if missing)
+        //   2 = FILE_CREATE       (fail if exists)
+        //   3 = FILE_OPEN_IF      (open or create)
+        //   4 = FILE_OVERWRITE    (fail if missing, truncate)
+        //   5 = FILE_OVERWRITE_IF (open or create, truncate)
+        // The disc volume (\Device\Cdrom0) is READ-ONLY media: creation on it
+        // must fail — never fabricate content that the real dump does not
+        // contain (the game probes e.g. skuinfo.p3d.rz and must observe its
+        // absence so it falls back to the plain file).
+        bool on_disc = device_path.rfind("\\Device\\Cdrom0", 0) == 0;
+        bool create_if_missing =
+            (create_disp == 0 || create_disp == 2 || create_disp == 3 ||
+             create_disp == 5);
+        if (create_if_missing && !on_disc && !K().fs_root.empty()) {
+            fd = open(host.c_str(), O_RDWR | O_CREAT, 0644);
+            if (fd >= 0) exists = true;
         }
         if (fd < 0 && !exists) {
             delete f;
@@ -424,8 +435,10 @@ IMPORT(NtReadFile) {
             ev->cv.notify_all();
         }
     }
-    PRLOG(Filesystem, "NtReadFile(%08X '%s') = %u bytes @ %llu", handle,
-          f->guest_path.c_str(), (uint32_t)n, (unsigned long long)off);
+    PRLOG(Filesystem, "NtReadFile(%08X '%s') = %u bytes @ %llu -> buf %08X ev=%08X apc=%08X apcctx=%08X ios=%08X lr=%08X tid=%u", handle,
+          f->guest_path.c_str(), (uint32_t)n, (unsigned long long)off, buffer,
+          event, apc_routine, apc_context, io_status,
+          (uint32_t)ctx.lr, GuestThread::GetCurrent() ? GuestThread::GetCurrent()->thread_id : 0);
     RET(X_STATUS_SUCCESS);
 }
 

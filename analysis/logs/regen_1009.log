@@ -1,0 +1,121 @@
+Recompiling functions... 0.0011883965%
+vcmpbfp128. at 8225AD00 has RC bit enabled but no comparison was generated
+Recompiling functions... 2.4350245%
+Recompiling functions... 4.8688607%
+vcmpbfp128. at 822C90D8 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 822CB6A8 has RC bit enabled but no comparison was generated
+Recompiling functions... 7.302696%
+Recompiling functions... 9.736533%
+vcmpbfp128. at 8231BD04 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8231BD9C has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82324954 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82336DC4 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 823387F8 has RC bit enabled but no comparison was generated
+Recompiling functions... 12.170368%
+vcmpbfp128. at 823457CC has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8234687C has RC bit enabled but no comparison was generated
+vcmpbfp128. at 823468F4 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82348B9C has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8234DC7C has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8234E458 has RC bit enabled but no comparison was generated
+Recompiling functions... 14.604205%
+vcmpbfp128. at 823A5C20 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 823A7264 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 823A73BC has RC bit enabled but no comparison was generated
+vcmpbfp128. at 823A7C30 has RC bit enabled but no comparison was generated
+Recompiling functions... 17.03804%
+vcmpbfp128. at 823D204C has RC bit enabled but no comparison was generated
+Recompiling functions... 19.471876%
+vcmpbfp128. at 823EEAC0 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 823EEB2C has RC bit enabled but no comparison was generated
+vcmpbfp128. at 823F388C has RC bit enabled but no comparison was generated
+Recompiling functions... 21.905712%
+vcmpbfp128. at 8243C0FC has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82442544 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 824687E0 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8246A298 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8246B320 has RC bit enabled but no comparison was generated
+Recompiling functions... 24.33955%
+vcmpbfp128. at 824A41D8 has RC bit enabled but no comparison was generated
+Recompiling functions... 26.773384%
+vcmpbfp128. at 824CA834 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 824DA9B8 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 824FA09C has RC bit enabled but no comparison was generated
+Recompiling functions... 29.20722%
+Recompiling functions... 31.641058%
+Recompiling functions... 34.074894%
+Recompiling functions... 36.50873%
+Recompiling functions... 38.942562%
+Recompiling functions... 41.3764%
+Recompiling functions... 43.810238%
+Recompiling functions... 46.244072%
+Recompiling functions... 48.67791%
+vcmpbfp128. at 82685D2C has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82686020 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8268BAB8 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8268BB24 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8268BBCC has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82694EC4 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8269A094 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8269B8CC has RC bit enabled but no comparison was generated
+vcmpbfp128. at 826C10A8 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 826C1468 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 826C16E0 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 826D0C40 has RC bit enabled but no comparison was generated
+Recompiling functions... 51.111748%
+vcmpbfp128. at 826E7D14 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 826EA638 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 826FF0F0 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82703408 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8270385C has RC bit enabled but no comparison was generated
+Recompiling functions... 53.54558%
+vcmpbfp128. at 82722614 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82722694 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82722D88 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82728C18 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82728C48 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82729A28 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82729A58 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8273EE7C has RC bit enabled but no comparison was generated
+Recompiling functions... 55.97942%
+vcmpbfp128. at 8276F360 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8277D954 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8277DAF0 has RC bit enabled but no comparison was generated
+Recompiling functions... 58.413254%
+vcmpbfp128. at 827A2E80 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827A2EF0 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827A2F60 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827A2FD0 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827D0DDC has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827D0FBC has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827D10F4 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827D6670 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827D6714 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827EC17C has RC bit enabled but no comparison was generated
+vcmpbfp128. at 827EC208 has RC bit enabled but no comparison was generated
+Recompiling functions... 60.84709%
+vcmpbfp128. at 8281EDA8 has RC bit enabled but no comparison was generated
+vcmpbfp128. at 8281F010 has RC bit enabled but no comparison was generated
+Recompiling functions... 63.280922%
+Recompiling functions... 65.71476%
+Recompiling functions... 68.1486%
+Recompiling functions... 70.58243%
+Recompiling functions... 73.016266%
+Recompiling functions... 75.4501%
+Recompiling functions... 77.88394%
+Recompiling functions... 80.31778%
+Recompiling functions... 82.75162%
+Recompiling functions... 85.18545%
+vcmpbfp128. at 82B3AD0C has RC bit enabled but no comparison was generated
+vcmpbfp128. at 82B3AD3C has RC bit enabled but no comparison was generated
+Recompiling functions... 87.619286%
+Recompiling functions... 90.05312%
+Recompiling functions... 92.48696%
+Recompiling functions... 94.9208%
+Recompiling functions... 97.35463%
+Recompiling functions... 99.78846%
+Recompiling functions... 100%
+
+real	0m4.196s
+user	0m4.149s
+sys	0m0.046s
