@@ -446,6 +446,9 @@ void __imp__sub_828D1730(PPCContext&, uint8_t*);
 void __imp__sub_828E6BA0(PPCContext&, uint8_t*);
 void __imp__sub_828E6D88(PPCContext&, uint8_t*);
 void __imp__sub_8296F4C0(PPCContext&, uint8_t*);
+void __imp__sub_828EDC20(PPCContext&, uint8_t*);
+void __imp__sub_828D5048(PPCContext&, uint8_t*);
+void __imp__sub_828D4FE8(PPCContext&, uint8_t*);
 }
 TRACE_HOOK_COLD(sub_82A5AA28)
 TRACE_HOOK_COLD(sub_82A5A920)
@@ -493,6 +496,36 @@ void sub_828D2C88(PPCContext& ctx, uint8_t* base) {
     __imp__sub_828D2C88(ctx, base);
     if (::pr::g_trace_hooks)
         ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D2C88 r3=%08X", ctx.r3.u32);
+}
+void sub_828EDC20(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks) {
+        char s1[64] = {0};
+        uint32_t p = ctx.r4.u32;
+        if (p >= 0x82000000 && p < 0xC0000000) {
+            for (int i = 0; i < 63; i++) {
+                uint8_t c = *(uint8_t*)(::pr::g_guest_base + (uint64_t)(p + i));
+                s1[i] = (char)c;
+                if (!c) break;
+            }
+        }
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828EDC20[FIND2](r3=%08X key='%s' r5=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, s1, ctx.r5.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_828EDC20(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828EDC20 r3=%08X", ctx.r3.u32);
+}
+void sub_828D5048(PPCContext& ctx, uint8_t* base) {
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_828D5048[INTERN](r3=%08X r4=%08X r5=%08X) [lr=%08X tid=%u]",
+                      ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    __imp__sub_828D5048(ctx, base);
+    if (::pr::g_trace_hooks)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_828D5048 r3=%08X", ctx.r3.u32);
 }
 void sub_828E6BA0(PPCContext& ctx, uint8_t* base) {
     if (::pr::g_trace_hooks) {
