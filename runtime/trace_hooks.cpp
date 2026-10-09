@@ -190,7 +190,31 @@ TRACE_HOOK(sub_82A5B9F0)
     }
 
 TRACE_HOOK_NAME(sub_82ADDD88)
-TRACE_HOOK_NAME(sub_82ADDD18)
+void sub_82ADDD18(PPCContext& ctx, uint8_t* base) {
+    static std::atomic<uint64_t> n{0};
+    uint64_t idx = n.fetch_add(1);
+    if (::pr::g_trace_hooks && idx < 12) {
+        auto L = [](uint32_t p) { return ::pr::LoadU32(p); };
+        auto LB = [](uint32_t p) { return *(uint8_t*)(::pr::g_guest_base + (uint64_t)p); };
+        uint32_t req = ctx.r3.u32;
+        uint32_t count = L(0x82DF5150);
+        char mods[256] = {0};
+        int nn = 0;
+        for (uint32_t i = 0; i < count && i < 16 && nn < 240; i++) {
+            uint32_t m = 0x82DF4838 + i * 284;
+            nn += snprintf(mods + nn, sizeof(mods) - nn, "[%u]=%02X ", i, LB(m));
+        }
+        uint8_t tagv = (req >= 0x70000000 && req < 0xC0000000) ? LB(req) : 0xFF;
+        ::pr::LogLine(::pr::LogCategory::kTrace,
+                      ">> sub_82ADDD18[MOD-LOOKUP](req=%08X tag=%02X) module_count=%u mods: %s [lr=%08X tid=%u]",
+                      req, tagv, count, mods,
+                      (uint32_t)ctx.lr,
+                      ::pr::GuestThread::GetCurrent() ? ::pr::GuestThread::GetCurrent()->thread_id : 0);
+    }
+    __imp__sub_82ADDD18(ctx, base);
+    if (::pr::g_trace_hooks && idx < 12)
+        ::pr::LogLine(::pr::LogCategory::kTrace, "<< sub_82ADDD18 #%llu r3=%d", (unsigned long long)idx, (int)ctx.r3.u32);
+}
 TRACE_HOOK_NAME(sub_82AE5760)
 TRACE_HOOK_NAME(sub_82AE5630)
 TRACE_HOOK_NAME(sub_82AEA980)
